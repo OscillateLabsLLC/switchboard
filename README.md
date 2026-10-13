@@ -91,6 +91,45 @@ Every installed step is instantiated by ovos-core even when it isn't in the pipe
 
 In shadow mode every step logs its verdict and latency and returns no match, so the device behaves exactly as before. A later step skips an utterance an earlier step already settled. The LLM step runs off the pipeline thread. OVOS's actual outcome (`ovos.intent.matched` / `unmatched`) goes to the same log for offline comparison. List the Switchboard steps ahead of the stock matchers, or the stock ones will claim utterances first and Switchboard never sees them.
 
+## Where the design came from
+
+Switchboard started as a question about how commercial assistants did intent routing before LLMs. The design that question produced was then cut down to whatever survived measurement against real household traffic.
+
+### What it borrowed
+
+- **Alexa's two-layer NLU.** Alexa compiled each skill's interaction model into a deterministic grammar for exact and near-exact matches, plus a statistical model that generalized beyond them. Switchboard keeps the same split: the exact step, then the classifier. Here, a skill's own registrations are the training data, just as the interaction model was Alexa's.
+- **Alexa's arbitration (Shortlister and HypRank).** Amazon's published approach narrows hundreds of thousands of skills to a top-k shortlist, then reranks the candidates using context. Switchboard's LLM step has the same shape: a similarity shortlist of 12 skill tools, and the LLM as the reranker of last resort over that short list. Addressee context (did the assistant just speak?) plays the role of HypRank's context features.
+- **Google's schema-guided approach.** Google's Schema-Guided Dialogue work (2019) described intents in natural language, so models could handle services they were never trained on. In Switchboard, the canonical schema's intent descriptions train the classifier, and the LLM's tool descriptions are generated from registrations, so a new skill needs no hand-written schema.
+- **Google's search fallback.** When intent matching failed, Google Assistant answered from the web instead of giving up. Here, the `ask_knowledge` meta tool passes knowledge questions to OVOS's common_qa.
+- **A clean-slate principle:** keep recall (find candidates), precision (rank them) and policy (act, confirm, or decline) separate. Padatious fuses all three into one confidence score that isn't calibrated across intents. That's why it confidently grabs the wrong intent. Risk-scaled policy is why high-risk intents are held rather than trusted to a threshold.
+- **Tools derived from what skills already declare.** The LLM's tools come from INTENT-4 registrations, so no skill has to change. The tool name is `skill_id:intent_name`, and arguments use the skill's own slot names, so the handler can't tell the dispatch apart from a normal match.
+
+### What testing inside OVOS changed
+
+The original plan was seven stages, including a shared sentence encoder, GLiNER slot filling and a trained reranker. Each stage had to beat stock OVOS on the [intent-eval](https://forgejo.graywind.org/graywind/intent-eval) harness before the next one started:
+
+- **No sentence encoder.** bge-small and a character n-gram TF-IDF classifier tied (p = 1.0). OVOS's own Model2Vec model lost with the same classifier head (p = 0.008). The char n-gram model won on cost: it's CPU-only and needs no model download. Mini PC latency hasn't been measured yet.
+- **Exact matching has to come first.** A classifier alone scored 76% on phrases skills declare verbatim; exact-first scored 98.9%. When templates from two intents collide, the phrase goes to the classifier rather than being guessed.
+- **Knowing when not to act became its own stage.** After the first two layers, false accepts were the main gap: 71.4%, against stock's 100%. No open "device-directed speech" dataset exists; Amazon's and Apple's corpora are proprietary. So the decline class trains on the assistant's own `.dialog` lines, the sentences its microphone is most likely to pick back up.
+- **The shortlist is mandatory, not an optimization.** All 149 tools on the Mac came to about 12.1k prompt tokens, over the local model's 12,288-token context.
+- **The addressee gate** reads P(yes) from first-token logprobs, a local stand-in for calibrated cloud addressee models.
+- **Context rules came from real Hub logs.** Speech was addressed to the assistant 87% of the time when it had spoken in the last 30 s, and 49% of the time otherwise. That led to the `active` decline policy (pass to the LLM only within 120 s). Requests almost never repeat four or more contiguous words of the assistant's speech (0 of 100), but self-echo does; that became the echo rule.
+- **Rejected after measurement:**
+  - A `clarify` tool: on overheard speech it interrupted 86 times and recovered 0, because the fragments that confuse the LLM are the same ones that mark speech as overheard.
+  - Giving the LLM conversation context: it doubled actions on overheard speech, from 7 to 14 of 71.
+
+### Pragmatic choices
+
+- **No trained reranker yet.** The shortlist plus the gated LLM covers the cases a reranker would decide, and no logs have shown misroutes that need one. It stays on the list, to be earned with data.
+- **Template slot extraction instead of GLiNER.** Most slots come straight out of the matched template; typed parsing and entity resolution stay in the skills.
+- **High-risk intents are held** until a confirm flow exists, rather than relying on a confidence threshold. Wrong high-risk picks reached 0.994 confidence, so no threshold could separate them.
+- **Within OVOS:**
+  - The LLM step runs ahead of common_qa so overheard questions are declined, not answered.
+  - The echo step runs ahead of stop and converse.
+  - Declines go to a silent skill (Hangup), because OVOS's fallback skills speak.
+  - Each stage is its own pipeline step, so adopters can take only the pieces they want.
+  - Shadow mode is the default, so a device can be compared against its own behavior before anything changes.
+
 ## Architecture
 
 The layout is hexagonal where that pays off:
