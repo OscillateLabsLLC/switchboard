@@ -145,3 +145,11 @@ class RankedClassifier:
 def test_unmapped_top_class_passes_with_its_own_reason(parts):
     stage = ClassifierStage(RankedClassifier([("__unmapped__:skill-x.someone:do_thing", 0.97)]), parts.resolver)
     assert stage.decide("do the thing", COLD).reason == "unmapped intent"
+
+
+def test_unmapped_dispatch_is_opt_in(parts):
+    label = "skill-x.someone:do_thing"
+    ranked = RankedClassifier([(f"__unmapped__:{label}", 0.97)])
+    stage = ClassifierStage(ranked, parts.resolver, ClassifierOptions(dispatch_unmapped=True))
+    v = stage.decide("do the thing", COLD)
+    assert (v.outcome, v.label) == (Outcome.DISPATCH, label)

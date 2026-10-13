@@ -42,6 +42,7 @@ class ClassifierOptions:
     route_decline_class: str = "active"
     active_s: float = 120.0         # the "assistant active" window for route_decline_class="active"
     dialog_negatives: bool = True   # train the decline class on installed skills' .dialog lines
+    dispatch_unmapped: bool = False  # act on confident picks of intents missing from intents.yaml
 
     def __post_init__(self):
         if self.route_decline_class not in DECLINE_POLICIES:
