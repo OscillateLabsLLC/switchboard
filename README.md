@@ -1,89 +1,106 @@
 # Switchboard
 
-An OVOS intent pipeline plugin. It tries deterministic exact matches first, then a small classifier, then an LLM with tools derived from the skills' own registrations. When speech wasn't meant for the assistant, it stays silent.
+Intent routing for OVOS as four pipeline steps. It tries deterministic exact matches first, then a small classifier, then an LLM with tools derived from the skills' own registrations. When speech wasn't meant for the assistant, it stays silent.
 
-Each stage was measured before it was adopted, on the [intent-eval](https://forgejo.graywind.org/graywind/intent-eval) harness, using real household traffic from a Neon Hub and an OVOS Mac. On held-out Hub traffic, Switchboard answered 90.6% of requests correctly versus 42.2% for stock OVOS. On overheard speech, it acted on 7 of 71 utterances where Neon acted on all 71. `scripts/check_harness.py` shows that this package reproduces the harness's measured decisions exactly.
+Each stage was measured before it was adopted, on the [intent-eval](https://forgejo.graywind.org/graywind/intent-eval) harness, using real household traffic from a Neon Hub and an OVOS Mac. On held-out Hub traffic, Switchboard answered 90.6% of requests correctly versus 42.2% for stock OVOS. On overheard speech, it acted on 7 of 71 utterances where Neon acted on all 71. `scripts/check_harness.py` shows that this package's stages reproduce the harness's measured decisions exactly.
 
-## How it routes
+## The steps
 
-| tier | stage | outcome |
+Each step is its own OVOS pipeline plugin. You can place, drop or adopt each one on its own.
+
+| pipeline id | decides | outcomes |
 |---|---|---|
-| high | echo guard: the utterance repeats 4+ contiguous words the assistant said in the last 60 s | decline |
-| high | exact layer: a phrase that matches exactly one skill's template | dispatch |
-| medium | classifier (char n-gram TF-IDF + logistic regression, with a `__decline__` class), confidence ≥ 0.5 | dispatch |
-| medium | the decline class wins and the policy keeps the row from the LLM | decline |
-| low | LLM picks a skill tool and the addressee gate passes (P(addressed) ≥ 0.9) | dispatch |
-| low | LLM picks `ignore`, the gate fails, or the LLM is unreachable | decline |
-| low | LLM picks `ask_knowledge`, `stop` or `unsupported` | no match: OVOS's common_qa / fallback answer |
+| `ovos-switchboard-echo-pipeline-plugin` | the utterance repeats 4+ contiguous words the assistant said in the last 60 s | decline |
+| `ovos-switchboard-exact-pipeline-plugin` | the phrase matches exactly one skill's template | dispatch |
+| `ovos-switchboard-classifier-pipeline-plugin` | char n-gram TF-IDF + logistic regression with a `__decline__` class | dispatch if confidence ≥ 0.5; decline or pass for the decline class (policy); pass otherwise |
+| `ovos-switchboard-llm-pipeline-plugin` | an LLM picks one of the shortlisted skill tools; an addressee gate checks P(addressed) ≥ 0.9 | dispatch; decline on `ignore`, a failed gate or an unreachable LLM; pass on `ask_knowledge` / `stop` / `unsupported` |
 
-A **decline** dispatches to the [Hangup](https://github.com/OscillateLabsLLC/hangup) skill. Hangup speaks nothing and records the utterance and the reason. Hangup is required.
+- **Dispatch** goes to `skill_id:intent_name` with the data that skill reads: template slot values under the template's own names, Adapt vocab matches (`Location`, ...), or LLM tool arguments. Entity resolution and typed parsing stay in the skills.
+- **Decline** dispatches to the [Hangup](https://github.com/OscillateLabsLLC/hangup) skill, which speaks nothing and records the utterance and the reason. Hangup is required.
+- **Pass** returns no match, so later pipeline steps decide.
 
-**Decline-class policy** (`route_decline_class`) sets what happens when the classifier says "not for me":
-- `active` (default): such rows go to the LLM only if the assistant spoke within the last 120 s.
-- `always`: they always go to the LLM.
-- `never`: they never do.
+Steps never consult each other. Pipeline order already means a step only sees what earlier steps passed on. The classifier owns the decline-class policy (`route_decline_class`), which decides whether a "not for me" verdict declines on the spot or passes on to the LLM:
+- `active` (default): passes on only if the assistant spoke within the last 120 s.
+- `always`: always passes on.
+- `never`: always declines on the spot.
 
-**Dispatch** goes to `skill_id:intent_name` with the data that skill reads:
-- template slot values under the template's own names
-- Adapt vocab matches (`Location`, ...) for keyword intents
-- tool arguments for LLM picks
+**High-risk intents** (unlock, open covers, shutdown, clear data) are never acted on until a confirm flow exists (`high_risk: "defer"`). Once a step holds an utterance as high-risk, later Switchboard steps can't act on it either.
 
-Entity resolution and typed parsing stay in the skills.
-
-**High-risk intents** (unlock, open covers, shutdown, clear data) are never acted on until a confirm flow exists (`high_risk: "defer"`).
-
-The router trains itself from the live INTENT-4 registrations and retrains in the background when skills register or deregister. Its training data:
-- the skills' templates and keyword combinations
-- the bundled reviewed synthetic examples (`ovos_switchboard/data/`)
-- decline negatives harvested from installed skills' `.dialog` files, since the assistant can hear its own voice
-
-## Pipeline order
+## Pipeline order (measured configuration)
 
 ```json
 "intents": {
   "pipeline": [
+    "ovos-switchboard-echo-pipeline-plugin",
     "ovos-stop-pipeline-plugin-high",
     "ovos-converse-pipeline-plugin",
-    "ovos-switchboard-pipeline-plugin-high",
+    "ovos-switchboard-exact-pipeline-plugin",
     "ovos-ocp-pipeline-plugin-high",
-    "ovos-switchboard-pipeline-plugin-medium",
-    "ovos-switchboard-pipeline-plugin-low",
+    "ovos-switchboard-classifier-pipeline-plugin",
+    "ovos-switchboard-llm-pipeline-plugin",
     "ovos-common-query-pipeline-plugin",
     "ovos-fallback-pipeline-plugin-low"
   ]
 }
 ```
 
-`switchboard-low` runs **before** common_qa. If common_qa ran first, it would answer overheard questions before the LLM's addressee gate could decline them. Questions the LLM recognizes as addressed to the assistant (`ask_knowledge`) fall through to common_qa.
+- The **echo step comes first** so the assistant's own voice can't trigger stop or converse.
+- The **LLM step runs before common_qa**. If common_qa ran first, it would answer overheard questions before the addressee gate could decline them. Questions the LLM recognizes as addressed to the assistant (`ask_knowledge`) pass through to common_qa.
+- **Using a subset is supported.** For example, the exact step alone makes a deterministic replacement for Padatious-high. Results then differ from the measured numbers above. Without an LLM step, set the classifier's `route_decline_class` to `never`, so "not for me" rows decline instead of reaching common_qa.
 
 ## Configuration
 
-Under `intents.ovos-switchboard-pipeline-plugin` in `mycroft.conf`:
+Shared settings go under `intents.switchboard`. Each step's settings go under its pipeline id, and a step can override the shared `mode`.
 
 ```json
-{
-  "mode": "shadow",
-  "llm": {"url": "http://llm-host:8080/v1/chat/completions", "model": "Qwen/Qwen3-14B-AWQ", "timeout_s": 10},
-  "route_decline_class": "active"
+"intents": {
+  "switchboard": {"mode": "shadow"},
+  "ovos-switchboard-llm-pipeline-plugin": {
+    "url": "http://llm-host:8080/v1/chat/completions", "model": "Qwen/Qwen3-14B-AWQ", "timeout_s": 4
+  }
 }
 ```
 
-| key | default | meaning |
-|---|---|---|
-| `mode` | `shadow` | `shadow` logs decisions and never matches; `active` acts |
-| `llm` | `{}` | OpenAI-compatible endpoint (`url`, `model`, `api_key`, `timeout_s`). Without it, low-confidence rows fall through to OVOS's own stages |
-| `route_decline_class` | `active` | `never` / `active` / `always` |
-| `threshold` | 0.5 | classifier confidence needed to dispatch |
-| `gate` | 0.9 | addressee-gate P(addressed) needed to act on an LLM pick |
-| `shortlist_k` | 12 | skill tools offered to the LLM per utterance |
-| `echo_run_min` / `active_s` | 4 / 120 | echo guard run length; "assistant active" window, in seconds |
-| `hangup_skill_id` | `ovos-skill-hangup.oscillatelabsllc` | where declines go |
-| `high_risk` | `defer` | `defer` or `allow` |
-| `decision_log` / `decision_log_path` | on / `$XDG_STATE_HOME/switchboard/decisions.jsonl` | JSONL of every decision and OVOS's actual outcome. Holds household speech; stays local |
+| section | key | default | meaning |
+|---|---|---|---|
+| shared | `mode` | `shadow` | `shadow` logs verdicts and never matches; `active` acts |
+| shared | `lang` | `en-us` | language the stages serve; other languages pass |
+| shared | `hangup_skill_id` | `ovos-skill-hangup.oscillatelabsllc` | where declines go |
+| shared | `high_risk` | `defer` | `defer` or `allow` |
+| shared | `retrain_debounce_s` | 5 | quiet time after registration changes before stages rebuild |
+| shared | `decision_log`, `decision_log_path` | on, `$XDG_STATE_HOME/switchboard/decisions.jsonl` | JSONL of every verdict and OVOS's actual outcome. Holds household speech; stays local |
+| echo | `echo_run_min` | 4 | contiguous words shared with recent assistant speech |
+| classifier | `threshold` | 0.5 | confidence needed to dispatch |
+| classifier | `route_decline_class` | `active` | `never` / `active` / `always` |
+| classifier | `active_s` | 120 | "assistant active" window, in seconds |
+| classifier | `dialog_negatives` | true | train the decline class on installed skills' `.dialog` lines |
+| llm | `url`, `model`, `api_key` | none | OpenAI-compatible endpoint. Without `url` the step never matches |
+| llm | `timeout_s` | 4 | per request; the step makes two (route + gate) |
+| llm | `gate`, `shortlist_k` | 0.9, 12 | addressee threshold; skill tools offered per utterance |
+
+ovos-core abandons any matcher that runs past `intents.<pipeline id>.match_timeout` (default 10 s) and treats it as no match. Keep `2 × timeout_s` under that value, or a slow LLM falls through to common_qa instead of declining.
+
+Every installed step is instantiated by ovos-core even when it isn't in the pipeline. To switch one off entirely, add its id to `intents.blacklisted_pipelines`.
 
 ## Shadow mode
 
-In shadow mode, Switchboard decides every utterance at whichever of its tiers runs first, then logs the decision and the fast-path latency. LLM calls run off the pipeline thread. It never returns a match, so the device behaves exactly as before. OVOS's actual outcome (`ovos.intent.matched` / `unmatched`) goes to the same log, so the two can be compared offline.
+In shadow mode every step logs its verdict and latency and returns no match, so the device behaves exactly as before. A later step skips an utterance an earlier step already settled. The LLM step runs off the pipeline thread. OVOS's actual outcome (`ovos.intent.matched` / `unmatched`) goes to the same log for offline comparison. List the Switchboard steps ahead of the stock matchers, or the stock ones will claim utterances first and Switchboard never sees them.
+
+## Architecture
+
+The layout is hexagonal where that pays off:
+
+```
+ovos_switchboard/
+  core/       domain, no OVOS imports: templates, schema, device data, the four stages (stages.py) returning a
+              Verdict (DISPATCH / DECLINE / PASS), the LLM port (ports.py), and router.py, which composes the
+              stages in measured order for the harness
+  adapters/   driven side: OpenAI-compatible LLM client, JSONL decision log, bus intent registry, dialog files
+  ovos/       driving side: the pipeline steps, plus the runtime (composition root) they share per bus
+  data/       intents.yaml schema, reviewed synthetic examples, the measured prompts
+```
+
+Each step asks the runtime to build only its own stage, so installing the exact step alone trains no classifier. All stages rebuild from the live INTENT-4 registrations in the background when skills register or deregister.
 
 ## Development
 

@@ -1,4 +1,4 @@
-from ovos_switchboard.context import SpeechContext
+from ovos_switchboard.core.context import SpeechContext
 
 
 def test_unknown_until_the_assistant_speaks():

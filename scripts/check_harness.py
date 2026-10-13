@@ -12,10 +12,11 @@ import json
 import os
 import sys
 
-from ovos_switchboard.device import Device
-from ovos_switchboard.llm import LLMClient, LLMUnavailable
-from ovos_switchboard.router import Router, RouterConfig
-from ovos_switchboard.schema import Schema
+from ovos_switchboard.adapters.openai_llm import LLMClient
+from ovos_switchboard.core.device import Device, read_jsonl
+from ovos_switchboard.core.ports import LLMUnavailable
+from ovos_switchboard.core.router import Router, RouterConfig
+from ovos_switchboard.core.schema import Schema
 
 # Must match the harness's llm_fallback.py: the model name is part of every cached request body.
 HARNESS_MODEL = "Qwen/Qwen3-14B-AWQ"
@@ -46,15 +47,17 @@ def build_router(harness, device, route):
         with open(path(f"prompts/{name}")) as f:
             return f.read().strip()
 
-    dev = Device.from_files(path(spec["manifest"]), path(spec["examples"]), [path(p) for p in spec["synthetic"]],
+    dev = Device.from_files(path(spec["manifest"]), path(spec["examples"]),
                             shared_examples=[path(p) for p in spec.get("shared_examples", [])],
                             shared_manifests=[path(p) for p in spec.get("shared_manifests", [])])
+    synthetic = [r for p in spec["synthetic"] for r in read_jsonl(path(p))]
     with open(path(spec["tools"])) as f:
         tools_doc = json.load(f)
     llm = CacheOnlyClient(url="http://cache-only.invalid", model=HARNESS_MODEL,
                           system_prompt=prompt("fallback_strict.txt"), gate_prompt=prompt("addressee_gate.txt"),
                           cache_path=path("llm_cache.jsonl"))
-    return Router(dev, Schema.load(path("intents.yaml")), tools_doc, llm, RouterConfig(route_decline_class=route))
+    return Router(dev, Schema.load(path("intents.yaml")), tools_doc, synthetic, llm,
+                  RouterConfig(route_decline_class=route))
 
 
 def check(harness, cp, device, route, split, router):

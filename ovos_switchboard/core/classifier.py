@@ -12,9 +12,9 @@ import re
 
 import numpy as np
 
-from ovos_switchboard.device import DECLINE
-from ovos_switchboard.schema import UNMAPPED
-from ovos_switchboard.templates import SLOT_TOKEN
+from ovos_switchboard.core.device import DECLINE
+from ovos_switchboard.core.schema import UNMAPPED
+from ovos_switchboard.core.templates import SLOT_TOKEN
 
 PIPELINE_SERVED = {"knowledge.ask", "stop"}
 LOGREG_C = 10.0
@@ -57,10 +57,10 @@ def phrase_rows(examples, schema):
     return out
 
 
-def training_data(device, schema, device_classes_only=True):
+def training_data(device, schema, synthetic=(), device_classes_only=True):
     rows = phrase_rows(device.examples, schema)
     rows += [(spec["description"].lower(), canon) for canon, spec in schema.intents.items()]
-    rows += [(r.get("masked", r["example"]).lower(), r["intent"]) for r in device.synthetic]
+    rows += [(r.get("masked", r["example"]).lower(), r["intent"]) for r in synthetic]
     if not device_classes_only:
         return rows
     rows += phrase_rows(device.shared_examples, schema)
@@ -73,8 +73,9 @@ def training_data(device, schema, device_classes_only=True):
 
 
 class Classifier:
-    def __init__(self, device, schema, device_classes_only=True):
-        rows = training_data(device, schema, device_classes_only)
+    def __init__(self, device, schema, synthetic=(), device_classes_only=True):
+        """synthetic: rows carrying their canonical intent or DECLINE (reviewed examples, dialog negatives)."""
+        rows = training_data(device, schema, synthetic, device_classes_only)
         texts, labels = [t for t, _ in rows], [label for _, label in rows]
         self.encoder = CharEncoder().fit(texts)
         self.head = LogRegHead().fit(self.encoder.encode(texts), labels)

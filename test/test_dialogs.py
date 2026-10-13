@@ -1,5 +1,5 @@
-from ovos_switchboard.device import harvest_dialog_negatives
-from ovos_switchboard.dialogs import installed_dialog_lines, package_dirs
+from ovos_switchboard.adapters.dialog_files import installed_dialog_lines, package_dirs
+from ovos_switchboard.core.device import harvest_dialog_negatives
 
 
 def test_dialog_lines_from_skill_locale_folders(tmp_path):

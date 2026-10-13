@@ -5,7 +5,7 @@ phrase. A collision between 2+ owners returns None so the classifier decides. No
 """
 import re
 
-from ovos_switchboard.templates import literal_words, template_regex
+from ovos_switchboard.core.templates import literal_words, template_regex
 
 
 class ExactLayer:

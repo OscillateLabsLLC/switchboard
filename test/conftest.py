@@ -2,7 +2,7 @@ import pytest
 from ovos_bus_client.message import Message
 from ovos_utils.fakebus import FakeBus
 
-from ovos_switchboard.llm import LLMUnavailable
+from ovos_switchboard.core.ports import LLMUnavailable
 
 HA = "skill-homeassistant.oscillatelabsllc"
 DATETIME = "ovos-skill-date-time.openvoiceos"

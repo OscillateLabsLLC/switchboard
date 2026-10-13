@@ -1,4 +1,4 @@
-"""Stage 5: an OpenAI-compatible chat endpoint routes what the earlier stages could not.
+"""LLM adapter: the LLMPort over any OpenAI-compatible chat completions endpoint (vLLM, llama.cpp, OpenAI, ...).
 
 Two calls per utterance, both temperature 0:
   route        tool_choice=required over the shortlisted tools, so the model must pick one (`ignore` included)
@@ -15,19 +15,12 @@ import time
 import urllib.error
 import urllib.request
 from collections import OrderedDict
-from importlib import resources
+
+from ovos_switchboard.core.ports import LLMUnavailable
 
 GATE_TOP_LOGPROBS = 10
 ROUTE_MAX_TOKENS = 200
 MEMORY_CACHE_SIZE = 1024
-
-
-class LLMUnavailable(RuntimeError):
-    """The endpoint could not be reached or answered something unusable."""
-
-
-def bundled_prompt(name):
-    return resources.files("ovos_switchboard.data.prompts").joinpath(name).read_text().strip()
 
 
 class LLMClient:

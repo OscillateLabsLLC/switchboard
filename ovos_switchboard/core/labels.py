@@ -13,8 +13,8 @@ Deterministic.
 """
 import re
 
-from ovos_switchboard.device import vkey
-from ovos_switchboard.templates import SLOT_TOKEN, compiles, literal_words, named_template_regex
+from ovos_switchboard.core.device import vkey
+from ovos_switchboard.core.templates import SLOT_TOKEN, compiles, literal_words, named_template_regex
 
 LITERAL_EXPANSION_LIMIT = 50
 EXAMPLES_PER_LABEL = 200

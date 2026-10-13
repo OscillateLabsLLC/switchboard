@@ -11,7 +11,7 @@ Plus META_TOOLS for paths the manifest can't express (knowledge, stop, ignore, u
 import logging
 import re
 
-from ovos_switchboard.templates import SLOT, expand
+from ovos_switchboard.core.templates import SLOT, expand
 
 LOG = logging.getLogger(__name__)
 

@@ -1,4 +1,4 @@
-"""The device's live intent manifest, indexed from INTENT-4 registration broadcasts.
+"""Intent source adapter: the device's live intent manifest, indexed from INTENT-4 registration broadcasts.
 
 Same source as ovos-core's IntentManifest (`ovos.intent.register.template` / `.keyword` and their deregistrations),
 kept locally so retraining never waits on a bus round trip. A one-time `ovos.intent.list` / `describe` sync covers
@@ -11,7 +11,7 @@ under the labels OCP dispatches.
 import os
 import threading
 
-from ovos_switchboard.device import adapt_definition
+from ovos_switchboard.core.device import adapt_definition
 
 DEFAULT_SESSION = "default"
 SYNC_TIMEOUT_S = 10

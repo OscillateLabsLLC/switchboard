@@ -47,7 +47,10 @@ Homepage = "https://github.com/OscillateLabsLLC/switchboard"
 Repository = "https://github.com/OscillateLabsLLC/switchboard"
 
 [project.entry-points."opm.pipeline"]
-"ovos-switchboard-pipeline-plugin" = "ovos_switchboard.plugin:SwitchboardPipeline"
+"ovos-switchboard-echo-pipeline-plugin" = "ovos_switchboard.ovos.steps:EchoStep"
+"ovos-switchboard-exact-pipeline-plugin" = "ovos_switchboard.ovos.steps:ExactStep"
+"ovos-switchboard-classifier-pipeline-plugin" = "ovos_switchboard.ovos.steps:ClassifierStep"
+"ovos-switchboard-llm-pipeline-plugin" = "ovos_switchboard.ovos.steps:LLMStep"
 
 [tool.hatch.version]
 source = "code"

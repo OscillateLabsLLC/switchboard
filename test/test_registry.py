@@ -1,7 +1,7 @@
 from ovos_bus_client.message import Message
 
 from conftest import DATETIME, HA, WEATHER, register_all
-from ovos_switchboard.registry import IntentRegistry
+from ovos_switchboard.adapters.bus_registry import IntentRegistry
 
 
 def test_registrations_become_router_definitions(bus):

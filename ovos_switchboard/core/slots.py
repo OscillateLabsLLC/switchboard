@@ -12,7 +12,7 @@ slot, they correspond. Unmappable slots are dropped (never guessed).
 """
 import re
 
-from ovos_switchboard.templates import SLOT, literal_words, named_template_regex
+from ovos_switchboard.core.templates import SLOT, literal_words, named_template_regex
 
 TRAILING_COURTESY = re.compile(r"\s+(please|thanks|thank you)$")
 LITERAL_EXPANSION_LIMIT = 50

@@ -1,9 +1,9 @@
 """The canonical intent schema (intents.yaml): shared intent names, their slots, risk levels, and which skill labels
 (`skill_id:intent_name`) serve each one. Canonical intents let devices with different skills share training data;
 dispatch always goes back to a label the device actually registered."""
-from importlib import resources
-
 import yaml
+
+from ovos_switchboard import data
 
 UNMAPPED = "__unmapped__:"
 
@@ -30,7 +30,7 @@ class Schema:
         if path:
             with open(path) as f:
                 return cls(yaml.safe_load(f))
-        return cls(yaml.safe_load(resources.files("ovos_switchboard.data").joinpath("intents.yaml").read_text()))
+        return cls(yaml.safe_load(data.text("intents.yaml")))
 
     def canon_or_unmapped(self, label):
         return self.label2canon.get(label, UNMAPPED + label)

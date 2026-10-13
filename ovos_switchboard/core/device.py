@@ -1,4 +1,4 @@
-"""What one device can do: its intent manifest, the training phrases derived from it, and decline negatives.
+"""What one device can do: its intent manifest and the training phrases derived from it.
 
 The manifest is a dict `skill_id -> [definition, ...]` in INTENT-4 describe shape. Template definitions carry
 `samples`; keyword (Adapt) definitions are normalized to `method: "adapt"` with `steps`, `vocab`, `regex` and
@@ -11,9 +11,8 @@ import json
 import re
 import string
 from dataclasses import dataclass, field
-from importlib import resources
 
-from ovos_switchboard.templates import MAX_PER_LINE, SLOT, clean, expand, expansions, template_regex
+from ovos_switchboard.core.templates import MAX_PER_LINE, SLOT, clean, expand, expansions, template_regex
 
 MAX_KEYWORD_EXAMPLES = 40
 DECLINE = "__decline__"  # training class for "should not act"
@@ -29,16 +28,10 @@ def read_jsonl(path):
         return [json.loads(line) for line in f]
 
 
-def bundled_jsonl(name):
-    text = resources.files("ovos_switchboard.data").joinpath(name).read_text()
-    return [json.loads(line) for line in text.splitlines() if line.strip()]
-
-
 @dataclass
 class Device:
     definitions: dict
     examples: list                    # {"label", "example", ...}: template expansions + keyword examples
-    synthetic: list                   # {"intent", "example", "masked"?}: canonical intents or DECLINE
     lang: str = "en-us"
     shared_examples: list = field(default_factory=list)      # other devices' phrases (classifier only)
     shared_definitions: list = field(default_factory=list)   # other devices' manifests (slot templates only)
@@ -56,21 +49,19 @@ class Device:
                         yield f"{skill_id}:{d['intent_name']}", line
 
     @classmethod
-    def from_files(cls, manifest, examples, synthetic=(), lang="en-us", shared_examples=(), shared_manifests=()):
+    def from_files(cls, manifest, examples, lang="en-us", shared_examples=(), shared_manifests=()):
         def manifest_defs(path):
             with open(path) as f:
                 return json.load(f)["definitions"]
-        return cls(definitions=manifest_defs(manifest), examples=read_jsonl(examples),
-                   synthetic=[r for p in synthetic for r in read_jsonl(p)], lang=lang,
+        return cls(definitions=manifest_defs(manifest), examples=read_jsonl(examples), lang=lang,
                    shared_examples=[r for p in shared_examples for r in read_jsonl(p)],
                    shared_definitions=[manifest_defs(p) for p in shared_manifests])
 
     @classmethod
-    def from_definitions(cls, definitions, synthetic, lang="en-us"):
+    def from_definitions(cls, definitions, lang="en-us"):
         """Live: derive training phrases from the manifest the way the harness did (harvest_live.py for templates,
         build_hub_manifest.py keyword combinations for Adapt)."""
-        return cls(definitions=definitions, examples=derive_examples(definitions, lang), synthetic=synthetic,
-                   lang=lang)
+        return cls(definitions=definitions, examples=derive_examples(definitions, lang), lang=lang)
 
 
 def derive_examples(definitions, lang):
@@ -137,7 +128,7 @@ def adapt_definition(payload):
 def harvest_dialog_negatives(dialog_lines, definitions, lang, max_per_line=5):
     """Decline negatives from skills' own .dialog lines: text the assistant SPEAKS and can hear back (self-echo).
     Lines matching a template are dropped: they would teach the decline class to swallow real requests."""
-    regexes = [template_regex(line) for _, line in Device(definitions, [], [], lang).template_entries()]
+    regexes = [template_regex(line) for _, line in Device(definitions, [], lang).template_entries()]
     out, seen = [], set()
     for line in dialog_lines:
         line = line.strip()

@@ -6,7 +6,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from ovos_switchboard.llm import LLMClient, LLMUnavailable, bundled_prompt, parse_yes_no
+from ovos_switchboard.adapters.openai_llm import LLMClient, parse_yes_no
+from ovos_switchboard.core.ports import LLMUnavailable
+from ovos_switchboard.data import prompt as bundled_prompt
 
 TOOL_REPLY = {"choices": [{"message": {"tool_calls": [{"function": {"name": "ignore", "arguments": "{}"}}]}}],
               "usage": {"prompt_tokens": 42}}

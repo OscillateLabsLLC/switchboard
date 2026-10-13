@@ -8,8 +8,8 @@ import re
 
 import numpy as np
 
-from ovos_switchboard.templates import SLOT_TOKEN
-from ovos_switchboard.tools import META_PREFIX
+from ovos_switchboard.core.templates import SLOT_TOKEN
+from ovos_switchboard.core.tools import META_PREFIX
 
 DEFAULT_K = 12
 
