@@ -1,6 +1,6 @@
 # Switchboard
 
-Intent routing for OVOS as four pipeline steps. It tries deterministic exact matches first, then a small classifier, then an LLM with tools derived from the skills' own registrations. When speech wasn't meant for the assistant, it stays silent.
+Intent routing for OVOS as a set of pipeline steps. It tries deterministic exact matches first, then a small classifier, then an LLM with tools derived from the skills' own registrations. When speech wasn't meant for the assistant, it stays silent.
 
 Each stage was measured before it was adopted, on the [intent-eval](https://forgejo.graywind.org/graywind/intent-eval) harness, using real household traffic from a Neon Hub and an OVOS Mac. On held-out Hub traffic, Switchboard answered 90.6% of requests correctly versus 42.2% for stock OVOS. On overheard speech, it acted on 7 of 71 utterances where Neon acted on all 71. `scripts/check_harness.py` shows that this package's stages reproduce the harness's measured decisions exactly.
 
@@ -11,8 +11,9 @@ Each step is its own OVOS pipeline plugin. You can place, drop or adopt each one
 | pipeline id | decides | outcomes |
 |---|---|---|
 | `ovos-switchboard-echo-pipeline-plugin` | the utterance repeats 4+ contiguous words the assistant said in the last 60 s | decline |
-| `ovos-switchboard-exact-pipeline-plugin` | the phrase matches exactly one skill's template | dispatch |
+| `ovos-switchboard-exact-pipeline-plugin` | the whole utterance matches exactly one skill's template, after stripping a leading wake phrase ("Hey Mycroft, …") | dispatch |
 | `ovos-switchboard-classifier-pipeline-plugin` | char n-gram TF-IDF + logistic regression with a `__decline__` class | dispatch if confidence ≥ 0.5; decline or pass for the decline class (policy); pass otherwise |
+| `ovos-switchboard-prefix-pipeline-plugin` (optional) | the utterance starts with a slot-free template of 3+ literal words and keeps going ("make me laugh hey dad …") | dispatch |
 | `ovos-switchboard-llm-pipeline-plugin` | an LLM picks one of the shortlisted skill tools; an addressee gate checks P(addressed) ≥ 0.9 | dispatch; decline on `ignore`, a failed gate or an unreachable LLM; pass on `ask_knowledge` / `stop` / `unsupported` |
 
 - **Dispatch** goes to `skill_id:intent_name` with the data that skill reads: template slot values under the template's own names, Adapt vocab matches (`Location`, ...), or LLM tool arguments. Entity resolution and typed parsing stay in the skills.
@@ -46,6 +47,7 @@ Steps never consult each other. Pipeline order already means a step only sees wh
 
 - The **echo step comes first** so the assistant's own voice can't trigger stop or converse.
 - The **LLM step runs before common_qa**. If common_qa ran first, it would answer overheard questions before the addressee gate could decline them. Questions the LLM recognizes as addressed to the assistant (`ask_knowledge`) pass through to common_qa.
+- The **prefix step is optional** and not part of the measured order. It fixed 2 real trailing-speech rows on the harness with no losses, but those rows motivated it, so it still needs prospective validation. If you use it, place it between the classifier and LLM steps.
 - **Using a subset is supported.** For example, the exact step alone makes a deterministic replacement for Padatious-high. Results then differ from the measured numbers above. Without an LLM step, set the classifier's `route_decline_class` to `never`, so "not for me" rows decline instead of reaching common_qa.
 
 ## Configuration
@@ -68,6 +70,7 @@ Shared settings go under `intents.switchboard`. Each step's settings go under it
 | shared | `hangup_skill_id` | `ovos-skill-hangup.oscillatelabsllc` | where declines go |
 | shared | `high_risk` | `defer` | `defer` or `allow` |
 | shared | `retrain_debounce_s` | 5 | quiet time after registration changes before stages rebuild |
+| shared | `wake_phrases` | the listener's `hotwords` with `listen: true` | stripped from the start of an utterance before template matching |
 | shared | `bus_timeout_s` | 10 | each startup query to ovos-core (intent sync, skills list) |
 | shared | `echo_window_s` | 60 | echo compares the utterance against assistant speech this recent |
 | shared | `speech_history_s`, `speech_lines_max` | 600, 64 | how much assistant speech is kept per session |
@@ -75,6 +78,7 @@ Shared settings go under `intents.switchboard`. Each step's settings go under it
 | shared | `model_cache`, `model_cache_path`, `model_cache_max` | on, `$XDG_CACHE_HOME/switchboard`, 2 | reuse the trained classifier across restarts while its inputs are unchanged. Stored as plain arrays (`.npz`, no pickle), so a tampered file can't run code |
 | shared | `decision_log`, `decision_log_path` | on, `$XDG_STATE_HOME/switchboard/decisions.jsonl` | JSONL of every verdict and OVOS's actual outcome. Holds household speech; stays local |
 | echo | `echo_run_min` | 4 | contiguous words shared with recent assistant speech |
+| prefix | `prefix_min_literal` | 3 | literal words a slot-free template needs to match as a prefix |
 | classifier | `threshold` | 0.5 | confidence needed to dispatch |
 | classifier | `route_decline_class` | `active` | `never` / `active` / `always` |
 | classifier | `active_s` | 120 | "assistant active" window, in seconds |

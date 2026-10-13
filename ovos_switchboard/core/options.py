@@ -36,6 +36,12 @@ class EchoOptions:
 
 
 @dataclass(frozen=True)
+class PrefixOptions:
+    """Trailing speech after a declared phrase."""
+    prefix_min_literal: int = 3     # literal words a slot-free template needs to match as a prefix
+
+
+@dataclass(frozen=True)
 class ClassifierOptions:
     """Dispatch confidence, and what the decline class does."""
     threshold: float = 0.5

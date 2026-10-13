@@ -24,6 +24,7 @@ from ovos_switchboard.core.options import SpeechOptions, options_from
 from ovos_switchboard.core.schema import Schema
 from ovos_switchboard.core.slots import SlotExtractor
 from ovos_switchboard.core.stages import LabelResolver
+from ovos_switchboard.core.wake import wake_phrase_pattern
 
 
 try:
@@ -57,6 +58,7 @@ class Settings:  # pylint: disable=too-many-instance-attributes  # one field per
     model_cache_path: str = ""
     model_cache_max: int = 2            # newest models kept per kind
     schema_path: str = ""
+    wake_phrases: tuple = ()            # stripped from the start of utterances; default: the listener's hotwords
     speech: SpeechOptions = field(default_factory=SpeechOptions)
 
     def __post_init__(self):
@@ -69,6 +71,16 @@ class Settings:  # pylint: disable=too-many-instance-attributes  # one field per
         return replace(options_from(cls, config), speech=options_from(SpeechOptions, config))
 
 
+def listener_wake_phrases():
+    """The wake words the listener is listening for ("hey_mycroft"), from mycroft.conf hotwords."""
+    try:
+        from ovos_config import Configuration
+    except ImportError:  # pragma: no cover
+        return ()
+    hotwords = Configuration().get("hotwords") or {}
+    return tuple(name for name, cfg in hotwords.items() if isinstance(cfg, dict) and cfg.get("listen"))
+
+
 @dataclass(frozen=True)
 class Build:
     """What every stage builder may draw on, from one registry snapshot."""
@@ -77,6 +89,7 @@ class Build:
     resolver: LabelResolver
     schema: Schema
     lang: str
+    wake: object  # compiled leading-wake-phrase pattern, or None
 
 
 @dataclass
@@ -97,7 +110,10 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
         with cls._class_lock:
             rt = cls._instances.get(id(bus))
             if rt is None:
-                rt = cls._instances[id(bus)] = cls(bus, Settings.from_config(config))
+                settings = Settings.from_config(config)
+                if not settings.wake_phrases:
+                    settings = replace(settings, wake_phrases=listener_wake_phrases())
+                rt = cls._instances[id(bus)] = cls(bus, settings)
             rt.refs += 1
             return rt
 
@@ -114,6 +130,7 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
         self.schema = Schema.load(settings.schema_path or None)
         self.dialog_lines = dialog_lines
         self.speech = SpeechContext(settings.speech)
+        self.wake = wake_phrase_pattern(settings.wake_phrases)
         self.log = DecisionLog(settings.decision_log_path or None, settings.decision_log_max_bytes,
                                settings.decision_log)
         self.models = ModelCache(settings.model_cache_path or None, settings.model_cache_max, settings.model_cache)
@@ -179,7 +196,7 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
         t0 = time.perf_counter()
         device = Device.from_definitions(definitions, self.settings.lang)
         resolver = LabelResolver(LabelSelector(device, self.schema), SlotExtractor(device, self.schema))
-        build = Build(definitions, device, resolver, self.schema, self.settings.lang)
+        build = Build(definitions, device, resolver, self.schema, self.settings.lang, self.wake)
         for name, (builder, _) in sorted(self.builders.items(), key=lambda item: item[1][1]):
             t_stage = time.perf_counter()
             try:

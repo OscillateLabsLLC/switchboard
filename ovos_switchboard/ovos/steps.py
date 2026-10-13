@@ -4,6 +4,7 @@
   ovos-switchboard-echo-pipeline-plugin        the assistant hearing itself -> decline
   ovos-switchboard-exact-pipeline-plugin       declared template phrases -> dispatch
   ovos-switchboard-classifier-pipeline-plugin  confident picks -> dispatch; decline class -> decline or pass on
+  ovos-switchboard-prefix-pipeline-plugin      trailing speech after a declared phrase -> dispatch
   ovos-switchboard-llm-pipeline-plugin         LLM with manifest-derived tools and an addressee gate
 
 A step turns its stage's verdict into OVOS terms: DISPATCH -> IntentHandlerMatch to the skill, DECLINE -> a match
@@ -22,9 +23,9 @@ from ovos_switchboard.adapters.openai_llm import LLMClient, LLMEndpoint
 from ovos_switchboard.core.classifier import Classifier, model_fingerprint, training_data
 from ovos_switchboard.core.device import harvest_dialog_negatives
 from ovos_switchboard.core.exact import ExactLayer
-from ovos_switchboard.core.options import ClassifierOptions, EchoOptions, LLMOptions, options_from
+from ovos_switchboard.core.options import ClassifierOptions, EchoOptions, LLMOptions, PrefixOptions, options_from
 from ovos_switchboard.core.shortlist import Shortlist
-from ovos_switchboard.core.stages import ClassifierStage, EchoStage, ExactStage, LLMStage
+from ovos_switchboard.core.stages import ClassifierStage, EchoStage, ExactStage, LLMStage, PrefixStage
 from ovos_switchboard.core.tools import build_tools
 from ovos_switchboard.core.verdict import Outcome
 from ovos_switchboard.ovos.runtime import LOG, MODES, SwitchboardRuntime, UtteranceRecord
@@ -157,7 +158,22 @@ class ExactStep(SwitchboardStep):
     name = "exact"
 
     def setup(self):
-        self.runtime.provide(self.name, lambda b: ExactStage(ExactLayer(b.device, b.schema), b.resolver))
+        self.runtime.provide(self.name, lambda b: ExactStage(ExactLayer(b.device, b.schema), b.resolver, b.wake))
+
+
+class PrefixStep(SwitchboardStep):
+    """Pipeline step: dispatch trailing speech after a declared phrase. Place it after the classifier step."""
+    name = "prefix"
+
+    def setup(self):
+        self.options = options_from(PrefixOptions, self.config)
+        self.runtime.provide(self.name, self.build)
+
+    def build(self, b):
+        """The prefix stage for the current registrations."""
+        layer = ExactLayer(b.device, b.schema)
+        layer.enable_prefix(self.options.prefix_min_literal)
+        return PrefixStage(layer, b.resolver, b.wake)
 
 
 class ClassifierStep(SwitchboardStep):

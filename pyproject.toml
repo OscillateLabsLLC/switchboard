@@ -51,6 +51,7 @@ Repository = "https://github.com/OscillateLabsLLC/switchboard"
 "ovos-switchboard-echo-pipeline-plugin" = "ovos_switchboard.ovos.steps:EchoStep"
 "ovos-switchboard-exact-pipeline-plugin" = "ovos_switchboard.ovos.steps:ExactStep"
 "ovos-switchboard-classifier-pipeline-plugin" = "ovos_switchboard.ovos.steps:ClassifierStep"
+"ovos-switchboard-prefix-pipeline-plugin" = "ovos_switchboard.ovos.steps:PrefixStep"
 "ovos-switchboard-llm-pipeline-plugin" = "ovos_switchboard.ovos.steps:LLMStep"
 
 [tool.hatch.version]
@@ -74,7 +75,7 @@ select = [
 [tool.ruff.lint.isort]
 lines-after-imports = 2
 combine-as-imports = true
-known-first-party = ["ovos_switchboard", "conftest"]
+known-first-party = ["ovos_switchboard", "conftest", "test_stages"]
 
 [tool.pylint.format]
 max-line-length = 119
