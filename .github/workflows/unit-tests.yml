@@ -1,0 +1,37 @@
+name: Run Unit Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      # A venv, not --system: the runner's Python is externally managed (PEP 668) and refuses installs.
+      - name: Install dependencies
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install --python .venv/bin/python -e ".[test,dev]"
+
+      - name: Run tests
+        run: .venv/bin/pytest
+
+      - name: Ruff
+        run: .venv/bin/ruff check .
+
+      - name: Pylint
+        run: .venv/bin/pylint ovos_switchboard scripts

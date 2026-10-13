@@ -1,0 +1,3 @@
+# START_VERSION_BLOCK
+__version__ = "0.1.0"
+# END_VERSION_BLOCK

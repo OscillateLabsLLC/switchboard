@@ -1,0 +1,94 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ovos-switchboard-pipeline-plugin"
+dynamic = ["version"]
+description = "An OVOS intent pipeline: deterministic exact matches, a small classifier, an LLM with manifest-derived tools, and silence when speech wasn't meant for the assistant"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [
+    { name = "Oscillate Labs", email = "mike@oscillatelabs.net" }
+]
+keywords = ["ovos", "neon", "pipeline", "intent", "voice", "llm", "switchboard"]
+classifiers = [
+    # Guards against an accidental `uv publish` reaching PyPI while the repo is private.
+    "Private :: Do Not Upload",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "scikit-learn",
+    "pyyaml",
+    "ovos-plugin-manager>=2.0.0",
+    "ovos-bus-client",
+    "ovos-utils",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+]
+dev = [
+    "pylint>=3.0.0",
+    "ruff",
+]
+
+[project.urls]
+Homepage = "https://github.com/OscillateLabsLLC/switchboard"
+Repository = "https://github.com/OscillateLabsLLC/switchboard"
+
+[project.entry-points."opm.pipeline"]
+"ovos-switchboard-echo-pipeline-plugin" = "ovos_switchboard.ovos.steps:EchoStep"
+"ovos-switchboard-exact-pipeline-plugin" = "ovos_switchboard.ovos.steps:ExactStep"
+"ovos-switchboard-classifier-pipeline-plugin" = "ovos_switchboard.ovos.steps:ClassifierStep"
+"ovos-switchboard-llm-pipeline-plugin" = "ovos_switchboard.ovos.steps:LLMStep"
+
+[tool.hatch.version]
+source = "code"
+path = "ovos_switchboard/version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ovos_switchboard"]
+
+[tool.ruff]
+line-length = 119
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E", # pycodestyle
+    "F", # pyflakes
+    "I", # isort
+]
+
+[tool.ruff.lint.isort]
+lines-after-imports = 2
+combine-as-imports = true
+known-first-party = ["ovos_switchboard", "conftest"]
+
+[tool.pylint.format]
+max-line-length = 119
+
+[tool.pylint.messages_control]
+disable = [
+    "W0702", # bare-except
+    "W0718", # broad-exception-caught
+    "C0114", # missing-module-docstring
+    "W0201", # attribute-defined-outside-init
+    "C0415", # import-outside-toplevel
+    "R0903", # too-few-public-methods: stages and ports are single-method by design
+]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+addopts = "--cov=ovos_switchboard --cov-report=term-missing"
