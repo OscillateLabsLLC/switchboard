@@ -86,6 +86,8 @@ Shared settings go under `intents.switchboard`. Each step's settings go under it
 
 ovos-core abandons any matcher that runs past `intents.<pipeline id>.match_timeout` (default 10 s) and treats it as no match. Keep `2 × timeout_s` under that value, or a slow LLM falls through to common_qa instead of declining.
 
+OVOS sessions carry their own copy of the pipeline. After changing `intents.pipeline`, restart the listener (and any other client that holds a default session) as well as ovos-core. Otherwise spoken utterances keep using the old pipeline, and the Switchboard steps never run.
+
 Every installed step is instantiated by ovos-core even when it isn't in the pipeline. To switch one off entirely, add its id to `intents.blacklisted_pipelines`.
 
 ## Shadow mode
