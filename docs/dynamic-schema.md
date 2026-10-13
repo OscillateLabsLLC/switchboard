@@ -115,7 +115,7 @@ since a spoken wake word is evidence the speech was meant for the assistant. Low
   revisited each time Neon's skill set changes.
 - **A canonical intent groups labels that do the same thing** (Neon's `WhereWereYouBorn` and OVOS's
   `where_were_you_born`), never sibling actions of one skill. When siblings share a class, the classifier learns
-  one class for all of them and a weaker second step (`LabelIndex.select`: template match, else nearest examples)
+  one class for all of them and a weaker second step (`LabelSelector.select`: template match, else nearest examples)
   picks the handler, so "how's my CPU doing" can reach the right class and still get the memory handler. A skill
   intent with no cross-skill equivalent gets its own canonical, or stays unmapped with an overlay entry that only
   sets risk and a description.
