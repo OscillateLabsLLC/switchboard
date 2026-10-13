@@ -68,6 +68,10 @@ Shared settings go under `intents.switchboard`. Each step's settings go under it
 | shared | `hangup_skill_id` | `ovos-skill-hangup.oscillatelabsllc` | where declines go |
 | shared | `high_risk` | `defer` | `defer` or `allow` |
 | shared | `retrain_debounce_s` | 5 | quiet time after registration changes before stages rebuild |
+| shared | `bus_timeout_s` | 10 | each startup query to ovos-core (intent sync, skills list) |
+| shared | `echo_window_s` | 60 | echo compares the utterance against assistant speech this recent |
+| shared | `speech_history_s`, `speech_lines_max` | 600, 64 | how much assistant speech is kept per session |
+| shared | `record_ttl_s`, `records_max` | 30, 64 | per-utterance bookkeeping (high-risk holds, shadow settlement). Keep `record_ttl_s` above the longest pipeline round |
 | shared | `decision_log`, `decision_log_path` | on, `$XDG_STATE_HOME/switchboard/decisions.jsonl` | JSONL of every verdict and OVOS's actual outcome. Holds household speech; stays local |
 | echo | `echo_run_min` | 4 | contiguous words shared with recent assistant speech |
 | classifier | `threshold` | 0.5 | confidence needed to dispatch |
@@ -76,6 +80,7 @@ Shared settings go under `intents.switchboard`. Each step's settings go under it
 | classifier | `dialog_negatives` | true | train the decline class on installed skills' `.dialog` lines |
 | llm | `url`, `model`, `api_key` | none | OpenAI-compatible endpoint. Without `url` the step never matches |
 | llm | `timeout_s` | 4 | per request; the step makes two (route + gate) |
+| llm | `route_max_tokens`, `cache_size` | 200, 1024 | room for one tool call; in-memory response cache entries |
 | llm | `gate`, `shortlist_k` | 0.9, 12 | addressee threshold; skill tools offered per utterance |
 
 ovos-core abandons any matcher that runs past `intents.<pipeline id>.match_timeout` (default 10 s) and treats it as no match. Keep `2 × timeout_s` under that value, or a slow LLM falls through to common_qa instead of declining.
@@ -107,7 +112,7 @@ Each step asks the runtime to build only its own stage, so installing the exact 
 ```sh
 uv venv --python 3.12
 uv pip install --python .venv/bin/python -e ".[test,dev]"
-.venv/bin/pytest && .venv/bin/ruff check .
+.venv/bin/pytest && .venv/bin/ruff check . && .venv/bin/pylint ovos_switchboard scripts
 ```
 
 The regression gate needs the intent-eval checkout and its environment, because the references were measured with its scikit-learn:

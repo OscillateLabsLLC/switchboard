@@ -4,13 +4,15 @@ from enum import Enum
 
 
 class Outcome(Enum):
+    """What a stage decided for an utterance."""
     DISPATCH = "dispatch"  # run this skill intent
     DECLINE = "decline"    # not meant for the assistant: stay silent
     PASS = "pass"          # not this stage's call: later pipeline steps decide
 
 
 @dataclass(frozen=True)
-class Verdict:
+class Verdict:  # pylint: disable=too-many-instance-attributes  # a value object
+    """One stage's decision for one utterance, with what the dispatch needs and why."""
     stage: str
     outcome: Outcome
     intent: str | None = None    # canonical intent (kept on PASS too, e.g. knowledge.ask, for the record)
@@ -26,12 +28,15 @@ class Verdict:
 
     @property
     def decisive(self):
+        """Whether the stage settled the utterance (dispatch or decline)."""
         return self.outcome is not Outcome.PASS
 
 
 def passed(stage, reason, **kw):
+    """A PASS verdict."""
     return Verdict(stage, Outcome.PASS, reason=reason, **kw)
 
 
 def declined(stage, reason, **kw):
+    """A DECLINE verdict."""
     return Verdict(stage, Outcome.DECLINE, reason=reason, **kw)

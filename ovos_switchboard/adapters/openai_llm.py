@@ -15,24 +15,36 @@ import time
 import urllib.error
 import urllib.request
 from collections import OrderedDict
+from dataclasses import dataclass
 
-from ovos_switchboard.core.ports import LLMUnavailable
-
-GATE_TOP_LOGPROBS = 10
-ROUTE_MAX_TOKENS = 200
-MEMORY_CACHE_SIZE = 1024
+from ovos_switchboard.core.ports import LLMPort, LLMUnavailable
 
 
-class LLMClient:
-    def __init__(self, url, model, system_prompt, gate_prompt, timeout_s=10.0, api_key=None, cache_path=None):
-        self.url, self.model, self.timeout_s, self.api_key = url, model, timeout_s, api_key
+GATE_TOP_LOGPROBS = 10  # the gate reads yes/no mass from this many first-token alternatives
+
+
+@dataclass(frozen=True)
+class LLMEndpoint:
+    """Where and how to call the model. Field names are the LLM step's config keys."""
+    url: str
+    model: str = ""
+    api_key: str | None = None
+    timeout_s: float = 4.0          # per request
+    route_max_tokens: int = 200     # room for one tool call with its arguments
+    cache_size: int = 1024          # in-memory response cache entries (a cache file is unbounded)
+
+
+class LLMClient(LLMPort):
+    """LLMPort over an OpenAI-compatible endpoint, with a response cache keyed by request body."""
+    def __init__(self, endpoint, system_prompt, gate_prompt, cache_path=None):
+        self.endpoint = endpoint
         self.system_prompt, self.gate_prompt = system_prompt, gate_prompt
         self.cache_path = cache_path
         self.lock = threading.Lock()
         self.cache = OrderedDict()
         if cache_path:
             try:
-                with open(cache_path) as f:
+                with open(cache_path, encoding="utf-8") as f:
                     for line in f:
                         e = json.loads(line)
                         self.cache[e["key"]] = e
@@ -41,7 +53,7 @@ class LLMClient:
 
     def route(self, utterance, tools):
         """{"tool": name, "args": {...}, "ms": float}"""
-        body = {"model": self.model, "temperature": 0, "max_tokens": ROUTE_MAX_TOKENS,
+        body = {"model": self.endpoint.model, "temperature": 0, "max_tokens": self.endpoint.route_max_tokens,
                 "tool_choice": "required", "chat_template_kwargs": {"enable_thinking": False},
                 "tools": tools,
                 "messages": [{"role": "system", "content": self.system_prompt},
@@ -50,7 +62,7 @@ class LLMClient:
 
     def p_addressed(self, utterance):
         """{"p_yes": float, "ms": float}"""
-        body = {"model": self.model, "temperature": 0, "max_tokens": 1, "logprobs": True,
+        body = {"model": self.endpoint.model, "temperature": 0, "max_tokens": 1, "logprobs": True,
                 "top_logprobs": GATE_TOP_LOGPROBS, "chat_template_kwargs": {"enable_thinking": False},
                 "messages": [{"role": "system", "content": self.gate_prompt},
                              {"role": "user", "content": utterance}]}
@@ -74,27 +86,28 @@ class LLMClient:
 
     def _post(self, body):
         headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        req = urllib.request.Request(self.url, json.dumps(body).encode(), headers)
+        if self.endpoint.api_key:
+            headers["Authorization"] = f"Bearer {self.endpoint.api_key}"
+        req = urllib.request.Request(self.endpoint.url, json.dumps(body).encode(), headers)
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+            with urllib.request.urlopen(req, timeout=self.endpoint.timeout_s) as resp:
                 return json.load(resp)
         except (urllib.error.URLError, TimeoutError, OSError, ValueError) as e:
-            raise LLMUnavailable(f"{self.url}: {e}") from e
+            raise LLMUnavailable(f"{self.endpoint.url}: {e}") from e
 
     def _store(self, key, entry):
         with self.lock:
             self.cache[key] = entry
             if self.cache_path:
-                with open(self.cache_path, "a") as f:
+                with open(self.cache_path, "a", encoding="utf-8") as f:
                     f.write(json.dumps(entry) + "\n")
             else:
-                while len(self.cache) > MEMORY_CACHE_SIZE:
+                while len(self.cache) > self.endpoint.cache_size:
                     self.cache.popitem(last=False)
 
 
 def parse_tool_call(r):
+    """The first tool call in a chat completion as {"tool", "args"}."""
     calls = r["choices"][0]["message"].get("tool_calls") or []
     if not calls:
         raise ValueError(f"tool_choice=required returned no tool call: {r['choices'][0]['message']}")

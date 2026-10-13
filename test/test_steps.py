@@ -9,6 +9,7 @@ from ovos_switchboard.core.verdict import Outcome, Verdict
 from ovos_switchboard.ovos.runtime import Settings, SwitchboardRuntime
 from ovos_switchboard.ovos.steps import ClassifierStep, EchoStep, ExactStep, LLMStep
 
+
 HANGUP = "ovos-skill-hangup.oscillatelabsllc:decline"
 LLM_CONFIG = {"url": "http://127.0.0.1:1/v1/chat/completions", "model": "m"}
 
@@ -18,8 +19,8 @@ def utterance_message():
     return Message("recognizer_loop:utterance", {}, {"session": {"session_id": "default"}})
 
 
-@pytest.fixture
-def runtime(bus, tmp_path):
+@pytest.fixture(name="runtime")
+def runtime_fixture(bus, tmp_path):
     rt = SwitchboardRuntime(bus, Settings(mode="active", retrain_debounce_s=3600,
                                           decision_log_path=str(tmp_path / "decisions.jsonl")),
                             dialog_lines=lambda lang: DIALOG_LINES, start=False)
@@ -48,7 +49,7 @@ class ScriptedStage:
     def __init__(self, verdict):
         self.verdict = verdict
 
-    def decide(self, utterance, context):
+    def decide(self, _utterance, _context):
         return self.verdict
 
 
@@ -67,7 +68,7 @@ def test_classifier_step_works_alone(runtime):
     assert name == "classifier" and match.match_type.endswith(":what_time_is_it")
 
 
-def test_echo_step_needs_no_registrations(bus, tmp_path):
+def test_echo_step_needs_no_registrations(bus):
     rt = SwitchboardRuntime(bus, Settings(mode="active", decision_log=False), start=False)
     echo = EchoStep(bus, {}, runtime=rt)  # measured setting: 4+ contiguous words
     bus.emit(Message("speak", {"utterance": "the porch light is now off"}, utterance_message().context))

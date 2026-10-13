@@ -12,27 +12,32 @@ shared `intents.switchboard` section. mode "shadow" logs verdicts and never matc
 """
 import threading
 import time
+from dataclasses import dataclass
 
 from ovos_plugin_manager.templates.pipeline import IntentHandlerMatch, PipelinePlugin
 
 from ovos_switchboard import data
 from ovos_switchboard.adapters.bus_registry import session_of
-from ovos_switchboard.adapters.openai_llm import LLMClient
+from ovos_switchboard.adapters.openai_llm import LLMClient, LLMEndpoint
 from ovos_switchboard.core.classifier import Classifier
 from ovos_switchboard.core.device import harvest_dialog_negatives
 from ovos_switchboard.core.exact import ExactLayer
+from ovos_switchboard.core.options import ClassifierOptions, EchoOptions, LLMOptions, options_from
 from ovos_switchboard.core.shortlist import Shortlist
-from ovos_switchboard.core.stages import DECLINE_POLICIES, ClassifierStage, EchoStage, ExactStage, LLMStage
+from ovos_switchboard.core.stages import ClassifierStage, EchoStage, ExactStage, LLMStage
 from ovos_switchboard.core.tools import build_tools
 from ovos_switchboard.core.verdict import Outcome
-from ovos_switchboard.ovos.runtime import LOG, MODES, SwitchboardRuntime
+from ovos_switchboard.ovos.runtime import LOG, MODES, SwitchboardRuntime, UtteranceRecord
+
 
 HANGUP_INTENT = "decline"  # interface contract with Hangup (HangupSkill.DECLINE_INTENT)
 SHARED_SECTION = "switchboard"
 SYNTHETIC_FILE = "synthetic_examples_slotted.jsonl"
+HANGUP_DETAIL_KEYS = ("confidence", "p_addressed", "llm_tool", "echo_run")
 
 
 def shared_config():
+    """The `intents.switchboard` section of mycroft.conf."""
     try:
         from ovos_config import Configuration
         return Configuration().get("intents", {}).get(SHARED_SECTION, {})
@@ -40,7 +45,18 @@ def shared_config():
         return {}
 
 
+@dataclass(frozen=True)
+class Turn:
+    """One utterance as a step sees it."""
+    utterance: str
+    session_id: str
+    lang: str
+    context: dict
+    record: UtteranceRecord
+
+
 class SwitchboardStep(PipelinePlugin):
+    """One stage as an OVOS pipeline plugin: verdicts become matches, or None."""
     name = ""
     off_thread_in_shadow = False   # slow steps (the LLM) never block the pipeline in shadow mode
 
@@ -57,9 +73,11 @@ class SwitchboardStep(PipelinePlugin):
         """Provide a stage builder to the runtime (steps with trained artifacts) or build the stage directly."""
 
     def current_stage(self):
+        """This step's built stage, or None before the first build."""
         return self.runtime.stage(self.name)
 
     def shutdown(self):
+        """Release the shared runtime if this step acquired it."""
         if self.owns_runtime:
             self.runtime.release()
 
@@ -71,70 +89,71 @@ class SwitchboardStep(PipelinePlugin):
         record = self.runtime.record(message, utterance)
         if record.held or (self.mode == "shadow" and record.settled_by):
             return None
-        context = self.runtime.context(utterance, session_id)
+        turn = Turn(utterance, session_id, lang, self.runtime.context(utterance, session_id), record)
         if self.mode == "shadow":
             if self.off_thread_in_shadow:
-                threading.Thread(target=self._shadow, args=(stage, utterance, session_id, lang, context, record),
-                                 daemon=True, name=f"switchboard-{self.name}-shadow").start()
+                threading.Thread(target=self._shadow, args=(stage, turn), daemon=True,
+                                 name=f"switchboard-{self.name}-shadow").start()
             else:
-                self._shadow(stage, utterance, session_id, lang, context, record)
+                self._shadow(stage, turn)
             return None
-        verdict, ms = self._decide(stage, utterance, context)
-        return self._act(verdict, utterance, session_id, lang, context, record, ms)
+        verdict, ms = self._decide(stage, turn)
+        return self._act(verdict, turn, ms)
 
     @staticmethod
-    def _decide(stage, utterance, context):
+    def _decide(stage, turn):
         t0 = time.perf_counter()
-        verdict = stage.decide(utterance, context)
+        verdict = stage.decide(turn.utterance, turn.context)
         return verdict, round((time.perf_counter() - t0) * 1000, 1)
 
-    def _shadow(self, stage, utterance, session_id, lang, context, record):
-        verdict, ms = self._decide(stage, utterance, context)
-        if verdict.decisive and not record.settled_by:
-            record.settled_by = self.name
-        self._log(verdict, "shadow", utterance, session_id, lang, context, ms)
+    def _shadow(self, stage, turn):
+        verdict, ms = self._decide(stage, turn)
+        if verdict.decisive and not turn.record.settled_by:
+            turn.record.settled_by = self.name
+        self._log(verdict, "shadow", turn, ms)
 
-    def _act(self, verdict, utterance, session_id, lang, context, record, ms):
+    def _act(self, verdict, turn, ms):
         if verdict.outcome is Outcome.PASS:
-            self._log(verdict, "pass", utterance, session_id, lang, context, ms)
+            self._log(verdict, "pass", turn, ms)
             return None
         if verdict.outcome is Outcome.DECLINE:
-            self._log(verdict, "decline", utterance, session_id, lang, context, ms)
-            return self._hangup(verdict, utterance)
+            self._log(verdict, "decline", turn, ms)
+            return self._hangup(verdict, turn.utterance)
         if self.runtime.settings.high_risk == "defer" and self.runtime.schema.risk(verdict.intent) == "high":
-            record.held = True
-            self._log(verdict, "held", utterance, session_id, lang, context, ms, "high-risk intent, no confirm flow")
+            turn.record.held = True
+            self._log(verdict, "held", turn, ms, "high-risk intent, no confirm flow")
             return None
-        self._log(verdict, "dispatch", utterance, session_id, lang, context, ms)
+        self._log(verdict, "dispatch", turn, ms)
         return IntentHandlerMatch(match_type=verdict.label, match_data=dict(verdict.match_data),
-                                  skill_id=verdict.label.split(":", 1)[0], utterance=utterance)
+                                  skill_id=verdict.label.split(":", 1)[0], utterance=turn.utterance)
 
     def _hangup(self, verdict, utterance):
         skill_id = self.runtime.settings.hangup_skill_id
-        details = {k: verdict.details[k] for k in ("confidence", "p_addressed", "llm_tool", "echo_run")
-                   if verdict.details.get(k) is not None}
+        details = {k: verdict.details[k] for k in HANGUP_DETAIL_KEYS if verdict.details.get(k) is not None}
         return IntentHandlerMatch(match_type=f"{skill_id}:{HANGUP_INTENT}", skill_id=skill_id, utterance=utterance,
                                   match_data={"reason": verdict.reason, "stage": verdict.stage, **details})
 
-    def _log(self, verdict, action, utterance, session_id, lang, context, ms, reason=None):
+    def _log(self, verdict, action, turn, ms, reason=None):
         self.runtime.log.write({
             "event": "switchboard.verdict", "step": self.name, "mode": self.mode, "action": action,
-            "outcome": verdict.outcome.value, "reason": reason or verdict.reason, "utterance": utterance,
-            "session_id": session_id, "lang": lang, **context, "ms": ms, "intent": verdict.intent,
+            "outcome": verdict.outcome.value, "reason": reason or verdict.reason, "utterance": turn.utterance,
+            "session_id": turn.session_id, "lang": turn.lang, **turn.context, "ms": ms, "intent": verdict.intent,
             "label": verdict.label, "match_data": verdict.match_data, **verdict.details})
 
 
 class EchoStep(SwitchboardStep):
+    """Pipeline step: decline the assistant hearing itself."""
     name = "echo"
 
     def setup(self):
-        self.stage = EchoStage(int(self.config.get("echo_run_min", 4)))
+        self.stage = EchoStage(options_from(EchoOptions, self.config))
 
     def current_stage(self):
         return self.stage
 
 
 class ExactStep(SwitchboardStep):
+    """Pipeline step: dispatch declared template phrases."""
     name = "exact"
 
     def setup(self):
@@ -142,42 +161,38 @@ class ExactStep(SwitchboardStep):
 
 
 class ClassifierStep(SwitchboardStep):
+    """Pipeline step: dispatch confident classifier picks."""
     name = "classifier"
 
     def setup(self):
-        c = self.config
-        self.threshold = float(c.get("threshold", 0.5))
-        self.policy = c.get("route_decline_class", "active")
-        self.active_s = float(c.get("active_s", 120))
-        self.dialog_negatives = bool(c.get("dialog_negatives", True))
-        if self.policy not in DECLINE_POLICIES:
-            raise ValueError(f"route_decline_class must be one of {DECLINE_POLICIES}, got {self.policy!r}")
+        self.options = options_from(ClassifierOptions, self.config)
         self.synthetic = data.jsonl(SYNTHETIC_FILE)
         self.runtime.provide(self.name, self.build)
 
     def build(self, b):
+        """Train the classifier stage on the current registrations."""
         rows = list(self.synthetic)
-        if self.dialog_negatives:
+        if self.options.dialog_negatives:
             rows += harvest_dialog_negatives(self.runtime.dialog_lines(b.lang), b.definitions, b.lang)
-        return ClassifierStage(Classifier(b.device, b.schema, rows), b.resolver, self.threshold, self.policy,
-                               self.active_s)
+        return ClassifierStage(Classifier(b.device, b.schema, rows), b.resolver, self.options)
 
 
 class LLMStep(SwitchboardStep):
+    """Pipeline step: route to skill tools with an LLM, behind the addressee gate."""
     name = "llm"
     off_thread_in_shadow = True
 
     def setup(self):
-        c = self.config
-        if not c.get("url"):
+        if not self.config.get("url"):
             # OVOS instantiates every installed pipeline plugin, listed in the pipeline or not: stay inert.
             LOG.warning("ovos-switchboard-llm-pipeline-plugin has no `url` configured; the LLM step never matches")
             return
-        self.llm = LLMClient(c["url"], c.get("model", ""), data.prompt("fallback_strict.txt"),
-                             data.prompt("addressee_gate.txt"), float(c.get("timeout_s", 4)), c.get("api_key"))
-        self.gate, self.k = float(c.get("gate", 0.9)), int(c.get("shortlist_k", 12))
+        self.llm = LLMClient(options_from(LLMEndpoint, self.config), data.prompt("fallback_strict.txt"),
+                             data.prompt("addressee_gate.txt"))
+        self.options = options_from(LLMOptions, self.config)
         self.runtime.provide(self.name, self.build)
 
     def build(self, b):
+        """Build the LLM stage's tools and shortlist from the current registrations."""
         tools = build_tools(b.definitions, b.lang)
-        return LLMStage(self.llm, Shortlist(tools, b.device.examples), tools, b.schema, b.resolver, self.gate, self.k)
+        return LLMStage(self.llm, Shortlist(tools, b.device.examples), b.schema, b.resolver, self.options)

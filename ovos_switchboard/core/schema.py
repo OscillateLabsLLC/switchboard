@@ -5,10 +5,12 @@ import yaml
 
 from ovos_switchboard import data
 
+
 UNMAPPED = "__unmapped__:"
 
 
 class Schema:
+    """The canonical intents (intents.yaml): skill labels per intent, slot renames and risk."""
     def __init__(self, doc):
         self.intents = doc["intents"]
         self.declined = doc.get("declined") or []
@@ -28,12 +30,14 @@ class Schema:
     def load(cls, path=None):
         """`path`, or the schema bundled with the package."""
         if path:
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 return cls(yaml.safe_load(f))
         return cls(yaml.safe_load(data.text("intents.yaml")))
 
     def canon_or_unmapped(self, label):
+        """The canonical intent a skill label maps to, or the label marked unmapped."""
         return self.label2canon.get(label, UNMAPPED + label)
 
     def risk(self, canon):
+        """"high" or "low" for a canonical intent (low if unspecified)."""
         return (self.intents.get(canon) or {}).get("risk", "low")

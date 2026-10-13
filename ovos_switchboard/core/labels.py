@@ -14,18 +14,26 @@ Deterministic.
 import re
 
 from ovos_switchboard.core.device import vkey
-from ovos_switchboard.core.templates import SLOT_TOKEN, compiles, literal_words, named_template_regex
+from ovos_switchboard.core.templates import (
+    LITERAL_EXPANSION_LIMIT,
+    SLOT_TOKEN,
+    compiles,
+    literal_words,
+    named_template_regex,
+)
 
-LITERAL_EXPANSION_LIMIT = 50
+
 EXAMPLES_PER_LABEL = 200
 
 
 def phrase_regex(phrases):
+    """Whole-word alternation over `phrases`, longest first; None if there are none."""
     alts = sorted({re.escape(p.lower()) for p in phrases if p.strip()}, key=len, reverse=True)
     return re.compile(r"\b(" + "|".join(alts) + r")\b") if alts else None
 
 
 class AdaptRule:
+    """An Adapt keyword intent's required, optional and one-of steps, evaluated on an utterance."""
     def __init__(self, definition):
         self.steps = definition["steps"]
         self.vocab = {k: phrase_regex(v) for k, v in (definition.get("vocab") or {}).items()}
@@ -66,6 +74,7 @@ class AdaptRule:
 
 
 class LabelSelector:
+    """Picks the device's skill intent for a canonical intent, with the match data it reads."""
     def __init__(self, device, schema):
         from sklearn.feature_extraction.text import TfidfVectorizer
         self.by_canon, self.adapt, self.templates, ex_text = {}, {}, {}, {}
@@ -115,11 +124,10 @@ class LabelSelector:
             hit = self.adapt[label].evaluate(utt)
             return (hit[0], label, hit[1], "adapt rule") if hit else None
         for mode in ("full", "loose"):
-            best = None
-            for lit, full, loose in self.templates.get(label, []):
-                m = full.match(utt) if mode == "full" else loose.search(utt)
-                if m and (best is None or lit > best[0]):
-                    best = (lit, {g.split("__")[0]: v.strip() for g, v in m.groupdict().items() if v})
-            if best:
-                return best[0] + (1 if mode == "full" else 0), label, best[1], f"template {mode}"
+            hits = [(lit, m) for lit, full, loose in self.templates.get(label, [])
+                    if (m := full.match(utt) if mode == "full" else loose.search(utt))]
+            if hits:
+                lit, m = max(hits, key=lambda candidate: candidate[0])  # ties: the first template wins
+                data = {g.split("__")[0]: v.strip() for g, v in m.groupdict().items() if v}
+                return lit + (1 if mode == "full" else 0), label, data, f"template {mode}"
         return None

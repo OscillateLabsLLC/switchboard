@@ -5,7 +5,9 @@ Template syntax as skills write it in .intent files: (a|b) alternation, [optiona
 import itertools
 import re
 
+
 MAX_PER_LINE = 200
+LITERAL_EXPANSION_LIMIT = 50  # expansions examined when counting a template's literal words
 SLOT = re.compile(r"\{+([a-z_]+)\}+")
 SLOT_TOKEN = re.compile(r"\{+[a-z_]+\}+")
 
@@ -52,6 +54,7 @@ def expand(t):
 
 
 def clean(s):
+    """Collapse whitespace."""
     return re.sub(r"\s+", " ", s).strip()
 
 
@@ -99,6 +102,7 @@ def literal_words(line, limit=None):
 
 
 def compiles(line):
+    """Whether the template's named-group regex compiles."""
     try:
         re.compile(named_template_regex(line))
         return True

@@ -6,11 +6,13 @@ import logging
 import os
 from importlib.metadata import entry_points
 
+
 LOG = logging.getLogger(__name__)
 ENTRY_POINT_GROUPS = ("ovos.plugin.skill", "opm.pipeline")
 
 
 def package_dirs():
+    """Package directories of every installed skill and pipeline plugin."""
     dirs = set()
     for group in ENTRY_POINT_GROUPS:
         for ep in entry_points(group=group):
@@ -25,11 +27,13 @@ def package_dirs():
 
 
 def dialog_files(root, lang):
+    """The .dialog files for `lang` under `root`, in either locale layout."""
     patterns = [f"**/locale/{lang}/**/*.dialog", f"**/dialog/{lang}/**/*.dialog"]
     return sorted({f for p in patterns for f in glob.glob(os.path.join(root, p), recursive=True)})
 
 
 def installed_dialog_lines(lang="en-us", roots=None):
+    """Every line of every installed .dialog file for `lang`."""
     lines = []
     for root in roots if roots is not None else package_dirs():
         for path in dialog_files(root, lang):
@@ -37,5 +41,5 @@ def installed_dialog_lines(lang="en-us", roots=None):
                 with open(path, encoding="utf-8", errors="ignore") as f:
                     lines += f.read().splitlines()
             except OSError as e:
-                LOG.warning(f"skipping unreadable dialog file {path}: {e}")
+                LOG.warning("skipping unreadable dialog file %s: %s", path, e)
     return lines

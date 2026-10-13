@@ -6,9 +6,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from ovos_switchboard.adapters.openai_llm import LLMClient, parse_yes_no
+from ovos_switchboard.adapters.openai_llm import LLMClient, LLMEndpoint, parse_yes_no
 from ovos_switchboard.core.ports import LLMUnavailable
 from ovos_switchboard.data import prompt as bundled_prompt
+
 
 TOOL_REPLY = {"choices": [{"message": {"tool_calls": [{"function": {"name": "ignore", "arguments": "{}"}}]}}],
               "usage": {"prompt_tokens": 42}}
@@ -17,12 +18,12 @@ GATE_REPLY = {"choices": [{"logprobs": {"content": [{"top_logprobs": [
     {"token": "maybe", "logprob": math.log(0.2)}]}]}}], "usage": {"prompt_tokens": 7}}
 
 
-@pytest.fixture
-def server():
+@pytest.fixture(name="server")
+def server_fixture():
     seen = []
 
     class Handler(BaseHTTPRequestHandler):
-        def do_POST(self):
+        def do_POST(self):  # pylint: disable=invalid-name  # BaseHTTPRequestHandler's dispatch name
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             seen.append((body, self.headers.get("Authorization")))
             reply = GATE_REPLY if body.get("logprobs") else TOOL_REPLY
@@ -42,8 +43,9 @@ def server():
     httpd.shutdown()
 
 
-def client(url, **kw):
-    return LLMClient(url, "test-model", bundled_prompt("fallback_strict.txt"), bundled_prompt("addressee_gate.txt"), **kw)
+def client(url, cache_path=None, **endpoint):
+    return LLMClient(LLMEndpoint(url, "test-model", **endpoint), bundled_prompt("fallback_strict.txt"),
+                     bundled_prompt("addressee_gate.txt"), cache_path)
 
 
 def test_route_and_gate_against_an_openai_compatible_endpoint(server):

@@ -12,11 +12,13 @@ import json
 import os
 import sys
 
-from ovos_switchboard.adapters.openai_llm import LLMClient
+from ovos_switchboard.adapters.openai_llm import LLMClient, LLMEndpoint
 from ovos_switchboard.core.device import Device, read_jsonl
+from ovos_switchboard.core.options import ClassifierOptions
 from ovos_switchboard.core.ports import LLMUnavailable
 from ovos_switchboard.core.router import Router, RouterConfig
 from ovos_switchboard.core.schema import Schema
+
 
 # Must match the harness's llm_fallback.py: the model name is part of every cached request body.
 HARNESS_MODEL = "Qwen/Qwen3-14B-AWQ"
@@ -30,6 +32,7 @@ DEVICES = {
 
 
 class CacheOnlyClient(LLMClient):
+    """Answers only from the harness's LLM cache."""
     def _post(self, body):
         raise LLMUnavailable("not in the harness cache; references were measured on cached answers")
 
@@ -38,59 +41,68 @@ class CacheOnlyClient(LLMClient):
 
 
 def build_router(harness, device, route):
+    """The router for one harness device, built from the harness's own files."""
     spec = DEVICES[device]
 
     def path(name):
         return os.path.join(harness, name)
 
     def prompt(name):
-        with open(path(f"prompts/{name}")) as f:
+        with open(path(f"prompts/{name}"), encoding="utf-8") as f:
             return f.read().strip()
 
     dev = Device.from_files(path(spec["manifest"]), path(spec["examples"]),
                             shared_examples=[path(p) for p in spec.get("shared_examples", [])],
                             shared_manifests=[path(p) for p in spec.get("shared_manifests", [])])
     synthetic = [r for p in spec["synthetic"] for r in read_jsonl(path(p))]
-    with open(path(spec["tools"])) as f:
+    with open(path(spec["tools"]), encoding="utf-8") as f:
         tools_doc = json.load(f)
-    llm = CacheOnlyClient(url="http://cache-only.invalid", model=HARNESS_MODEL,
+    llm = CacheOnlyClient(LLMEndpoint(url="http://cache-only.invalid", model=HARNESS_MODEL),
                           system_prompt=prompt("fallback_strict.txt"), gate_prompt=prompt("addressee_gate.txt"),
                           cache_path=path("llm_cache.jsonl"))
-    return Router(dev, Schema.load(path("intents.yaml")), tools_doc, synthetic, llm,
-                  RouterConfig(route_decline_class=route))
+    return Router(dev, Schema.load(path("intents.yaml")), tools_doc, synthetic=synthetic, llm=llm,
+                  config=RouterConfig(classifier=ClassifierOptions(route_decline_class=route)))
 
 
-def check(harness, cp, device, route, split, router):
-    with open(os.path.join(harness, f"preds/v5__{device}__{route}__{split.upper()}.jsonl")) as f:
-        ref = {r["id"]: r for r in map(json.loads, f)}
+def reference_intents(path):
+    """{id: intent} from a harness predictions file."""
+    with open(path, encoding="utf-8") as f:
+        return {r["id"]: r.get("intent") for r in map(json.loads, f)}
+
+
+def check(cp, router, reference_path, split):
+    """Replay one split through the router; True if every decision matches the reference."""
+    expected = reference_intents(reference_path)
     gold, _, _ = cp.setup(split)
     _, _, _, ctx = cp.load_inputs(split)
     bad = []
     for rid, r in gold.items():
         c = ctx.get(rid, cp.COLD)
-        got = router.route(r["utterance"], {"gap_s": c["gap_s"], "echo_run": c["echo_run"]})
-        if got.get("intent") != ref[rid].get("intent"):
-            bad.append((rid, r["utterance"], ref[rid].get("intent"), got.get("intent")))
-    print(f"{device} {route} {split}: {len(gold) - len(bad)}/{len(gold)} identical")
+        got = router.route(r["utterance"], {"gap_s": c["gap_s"], "echo_run": c["echo_run"]}).get("intent")
+        if got != expected[rid]:
+            bad.append((rid, r["utterance"], expected[rid], got))
+    print(f"{os.path.basename(reference_path)}: {len(gold) - len(bad)}/{len(gold)} identical")
     for b in bad[:8]:
         print("   MISMATCH", b)
     return not bad
 
 
 def main(argv):
+    """Check every device, route policy and split; exit 1 on any mismatch."""
     args = [a for a in argv if not a.startswith("--")]
     if not args:
         sys.exit(__doc__)
     harness = os.path.abspath(os.path.expanduser(args[0]))
     sys.path.insert(0, harness)
     os.chdir(harness)  # context_policy reads its inputs relative to the harness
-    import context_policy as cp
+    import context_policy as cp  # pylint: disable=import-error  # lives in the harness checkout
     splits = ["dev"] if "--quick" in argv else ["dev", "test"]
     ok = True
     for device in DEVICES:
         for route in ("always", "active"):
             router = build_router(harness, device, route)
-            results = [check(harness, cp, device, route, s, router) for s in splits]  # every split reports
+            results = [check(cp, router, os.path.join(harness, f"preds/v5__{device}__{route}__{s.upper()}.jsonl"), s)
+                       for s in splits]  # every split reports
             ok = ok and all(results)
     sys.exit(0 if ok else 1)
 

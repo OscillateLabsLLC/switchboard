@@ -13,6 +13,7 @@ import re
 
 from ovos_switchboard.core.templates import SLOT, expand
 
+
 LOG = logging.getLogger(__name__)
 
 MAX_EXAMPLES = 4
@@ -37,6 +38,7 @@ META_TOOLS = {
 
 
 def short_skill(skill_id):
+    """A skill id without vendor affixes, safe for a tool name."""
     return re.sub(r"[^a-zA-Z0-9]+", "_", SKILL_AFFIXES.sub("", skill_id)).strip("_")
 
 
@@ -124,6 +126,7 @@ def _function(skill_id, intent_name, description, props, required):
 
 
 def template_tool(skill_id, intent_name, definition):
+    """Function tool for a template intent: its slots as parameters, example phrasings."""
     samples = definition.get("samples") or []
     slots = sorted({s for line in samples for s in SLOT.findall(line)})
     required = sorted(set.intersection(*(guaranteed_slots(line) for line in samples))) if samples else []
@@ -145,6 +148,7 @@ def adapt_tool(skill_id, intent_name, definition):
 
 
 def meta_tool(name, desc, params, required):
+    """Function tool for a pipeline action (ignore, ask_knowledge, ...)."""
     return {"type": "function", "function": {
         "name": name, "description": desc,
         "parameters": {"type": "object", "required": required,
@@ -163,8 +167,8 @@ def build_tools(definitions, lang="en-us"):
             name = t["function"]["name"]
             if name in labels:
                 if labels[name] != f"{skill_id}:{d['intent_name']}":  # same intent in another lang/method is fine
-                    LOG.warning(f"tool name collision: {name} for {labels[name]} and {skill_id}:{d['intent_name']}; "
-                                "keeping the first")
+                    LOG.warning("tool name collision: %s for %s and %s:%s; keeping the first",
+                                name, labels[name], skill_id, d["intent_name"])
                 continue
             labels[name] = f"{skill_id}:{d['intent_name']}"
             tools.append(t)

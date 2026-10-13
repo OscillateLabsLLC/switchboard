@@ -5,46 +5,47 @@ The OVOS plugin runs each stage as its own pipeline step instead; this compositi
 
   echo -> exact -> classifier -> [prefix, off by default; unvalidated] -> LLM
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ovos_switchboard.core.classifier import Classifier
 from ovos_switchboard.core.exact import ExactLayer
 from ovos_switchboard.core.labels import LabelSelector
+from ovos_switchboard.core.options import ClassifierOptions, EchoOptions, LLMOptions
 from ovos_switchboard.core.shortlist import Shortlist
 from ovos_switchboard.core.slots import SlotExtractor
 from ovos_switchboard.core.stages import ClassifierStage, EchoStage, ExactStage, LabelResolver, LLMStage, resolved
 from ovos_switchboard.core.verdict import Outcome
 
+
 DETAIL_KEYS = ("confidence", "top3", "label_how", "decline_class")
 
 
-@dataclass
+@dataclass(frozen=True)
 class RouterConfig:
-    threshold: float = 0.5
+    """Options for every stage, plus the harness-only prefix rule."""
+    echo: EchoOptions = field(default_factory=EchoOptions)
+    classifier: ClassifierOptions = field(default_factory=ClassifierOptions)
+    llm: LLMOptions = field(default_factory=LLMOptions)
     prefix_min_literal: int = 0
-    route_decline_class: str = "active"
-    gate: float = 0.9
-    shortlist_k: int = 12
     device_classes_only: bool = True
-    echo_run_min: int = 4
-    active_s: float = 120
 
 
 class Router:
-    def __init__(self, device, schema, tools_doc, synthetic=(), llm=None, config=None):
+    """All stages in measured order, returning the harness decision shape."""
+    def __init__(self, device, schema, tools_doc, *, synthetic=(), llm=None, config=None):  # pylint: disable=R0913
         c = self.cfg = config or RouterConfig()
         self.resolver = LabelResolver(LabelSelector(device, schema), SlotExtractor(device, schema))
         self.exact_layer = ExactLayer(device, schema)
         if c.prefix_min_literal:
             self.exact_layer.enable_prefix(c.prefix_min_literal)
-        self.echo = EchoStage(c.echo_run_min)
+        self.echo = EchoStage(c.echo)
         self.exact = ExactStage(self.exact_layer, self.resolver)
         self.classifier = ClassifierStage(Classifier(device, schema, synthetic, c.device_classes_only), self.resolver,
-                                          c.threshold, c.route_decline_class, c.active_s)
-        self.llm = LLMStage(llm, Shortlist(tools_doc, device.examples), tools_doc, schema, self.resolver,
-                            c.gate, c.shortlist_k) if llm else None
+                                          c.classifier)
+        self.llm = LLMStage(llm, Shortlist(tools_doc, device.examples), schema, self.resolver, c.llm) if llm else None
 
     def route(self, utterance, context=None):
+        """The harness decision for one utterance: echo, exact, classifier, then the LLM."""
         context = context or {}
         if self.echo.decide(utterance, context).decisive:
             return {"intent": None, "stage": "echo"}

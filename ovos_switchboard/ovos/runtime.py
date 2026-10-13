@@ -10,7 +10,7 @@ Shared settings live under `intents.switchboard` in mycroft.conf.
 """
 import threading
 import time
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, replace
 from typing import ClassVar
 
 from ovos_switchboard.adapters.bus_registry import IntentRegistry, session_of
@@ -19,9 +19,11 @@ from ovos_switchboard.adapters.dialog_files import installed_dialog_lines
 from ovos_switchboard.core.context import SpeechContext
 from ovos_switchboard.core.device import Device
 from ovos_switchboard.core.labels import LabelSelector
+from ovos_switchboard.core.options import SpeechOptions, options_from
 from ovos_switchboard.core.schema import Schema
 from ovos_switchboard.core.slots import SlotExtractor
 from ovos_switchboard.core.stages import LabelResolver
+
 
 try:
     from ovos_utils.log import LOG
@@ -32,29 +34,33 @@ except ImportError:  # pragma: no cover
 MODES = ("shadow", "active")
 SPEAK_TOPICS = ("speak", "ovos.utterance.speak")
 OUTCOME_TOPICS = ("ovos.intent.matched", "ovos.intent.unmatched", "complete_intent_failure")
-RECORD_TTL_S = 30
-RECORDS_MAX = 64
 
 
-@dataclass
-class Settings:
+@dataclass(frozen=True)
+class Settings:  # pylint: disable=too-many-instance-attributes  # one field per config key
+    """The shared `intents.switchboard` section."""
     mode: str = "shadow"
     lang: str = "en-us"
     hangup_skill_id: str = "ovos-skill-hangup.oscillatelabsllc"
     high_risk: str = "defer"            # "defer": never act on high-risk intents (no confirm flow yet); "allow"
     retrain_debounce_s: float = 5.0
+    bus_timeout_s: float = 10.0         # each startup query to ovos-core (intent sync, skills list)
+    record_ttl_s: float = 30.0          # must outlast one full pipeline round
+    records_max: int = 64
     decision_log: bool = True
     decision_log_path: str = ""
     decision_log_max_bytes: int = 5_000_000
     schema_path: str = ""
+    speech: SpeechOptions = field(default_factory=SpeechOptions)
+
+    def __post_init__(self):
+        if self.mode not in MODES:
+            raise ValueError(f"switchboard mode must be one of {MODES}, got {self.mode!r}")
 
     @classmethod
     def from_config(cls, config):
-        known = {f.name for f in fields(cls)}
-        s = cls(**{k: v for k, v in (config or {}).items() if k in known})
-        if s.mode not in MODES:
-            raise ValueError(f"switchboard mode must be one of {MODES}, got {s.mode!r}")
-        return s
+        """From the flat `intents.switchboard` section; the speech options share it."""
+        return replace(options_from(cls, config), speech=options_from(SpeechOptions, config))
 
 
 @dataclass(frozen=True)
@@ -69,16 +75,19 @@ class Build:
 
 @dataclass
 class UtteranceRecord:
+    """What the steps have settled about one utterance round."""
     held: bool = False     # a step held a high-risk intent: later steps must not act on this utterance
     settled_by: str = ""   # shadow mode: the first step with a decisive verdict
 
 
-class SwitchboardRuntime:
+class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the composition root
+    """What the Switchboard steps on one bus share: registry, stages, speech, log, records."""
     _instances: ClassVar[dict] = {}
     _class_lock = threading.Lock()
 
     @classmethod
     def acquire(cls, bus, config=None):
+        """The bus's runtime, created on first use; pair with release()."""
         with cls._class_lock:
             rt = cls._instances.get(id(bus))
             if rt is None:
@@ -87,6 +96,7 @@ class SwitchboardRuntime:
             return rt
 
     def release(self):
+        """Drop one reference; the last one shuts the runtime down."""
         with self._class_lock:
             self.refs -= 1
             if self.refs <= 0:
@@ -97,7 +107,7 @@ class SwitchboardRuntime:
         self.bus, self.settings, self.refs = bus, settings, 0
         self.schema = Schema.load(settings.schema_path or None)
         self.dialog_lines = dialog_lines
-        self.speech = SpeechContext()
+        self.speech = SpeechContext(settings.speech)
         self.log = DecisionLog(settings.decision_log_path or None, settings.decision_log_max_bytes,
                                settings.decision_log)
         self.builders, self.stages = {}, {}
@@ -113,6 +123,7 @@ class SwitchboardRuntime:
             threading.Thread(target=self._startup, daemon=True, name="switchboard-startup").start()
 
     def shutdown(self):
+        """Cancel pending rebuilds and detach from the bus."""
         with self.timer_lock:
             if self.timer:
                 self.timer.cancel()
@@ -130,9 +141,11 @@ class SwitchboardRuntime:
         self.schedule()
 
     def stage(self, name):
+        """The built stage `name`, or None until its first build."""
         return self.stages.get(name)
 
     def schedule(self):
+        """Rebuild once registrations have been quiet for retrain_debounce_s."""
         with self.timer_lock:
             if self.timer:
                 self.timer.cancel()
@@ -141,6 +154,7 @@ class SwitchboardRuntime:
             self.timer.start()
 
     def rebuild(self):
+        """Build every provided stage from the current registrations."""
         definitions = self.registry.definitions()
         if not definitions or not self.builders:
             return
@@ -152,26 +166,28 @@ class SwitchboardRuntime:
             try:
                 self.stages[name] = builder(build)
             except Exception:
-                LOG.exception(f"rebuilding the {name} stage failed; keeping the previous one")
-        LOG.info(f"switchboard rebuilt {sorted(self.builders)} from {sum(map(len, definitions.values()))} intents "
-                 f"in {time.perf_counter() - t0:.1f}s")
+                LOG.exception("rebuilding the %s stage failed; keeping the previous one", name)
+        LOG.info("switchboard rebuilt %s from %d intents in %.1fs", sorted(self.builders),
+                 sum(map(len, definitions.values())), time.perf_counter() - t0)
 
     # ---- context and records ----
 
     def serves(self, lang):
+        """Whether `lang` is the language the stages serve."""
         return (lang or "").lower().split("-")[0] == self.settings.lang.lower().split("-")[0]
 
     def context(self, utterance, session_id):
+        """Addressee context for `utterance` from the assistant's recent speech."""
         return self.speech.features(utterance, session_id)
 
     def record(self, message, utterance):
         """One record per utterance round. Every matcher in a round receives the same Message object."""
         key, now = (id(message), utterance), time.monotonic()
         with self.records_lock:
-            for k in [k for k, (t, _) in self.records.items() if now - t > RECORD_TTL_S]:
+            for k in [k for k, (t, _) in self.records.items() if now - t > self.settings.record_ttl_s]:
                 del self.records[k]
             if key not in self.records:
-                while len(self.records) >= RECORDS_MAX:
+                while len(self.records) >= self.settings.records_max:
                     self.records.pop(next(iter(self.records)))
                 self.records[key] = (now, UtteranceRecord())
             return self.records[key][1]
@@ -180,19 +196,20 @@ class SwitchboardRuntime:
 
     def _startup(self):
         try:
-            self.registry.sync()
+            self.registry.sync(self.settings.bus_timeout_s)
         except Exception:
             LOG.exception("initial intent sync failed; relying on registration broadcasts")
         self._check_hangup()
 
     def _check_hangup(self):
         from ovos_bus_client.message import Message
-        reply = self.bus.wait_for_response(Message("ovos.skills.list", {}), "ovos.skills.list.response", timeout=10)
+        reply = self.bus.wait_for_response(Message("ovos.skills.list", {}), "ovos.skills.list.response",
+                                           timeout=self.settings.bus_timeout_s)
         if reply and reply.data.get("ok"):
             loaded = {sk["skill_id"] for sk in reply.data.get("skills") or []}
             if self.settings.hangup_skill_id not in loaded:
-                LOG.error(f"{self.settings.hangup_skill_id} is not loaded: Switchboard's declines will go nowhere. "
-                          "Install the Hangup skill.")
+                LOG.error("%s is not loaded: Switchboard's declines will go nowhere. Install the Hangup skill.",
+                          self.settings.hangup_skill_id)
 
     def _on_speak(self, message):
         self.speech.heard_assistant(message.data.get("utterance", ""), session_of(message))

@@ -32,3 +32,6 @@ jobs:
 
       - name: Ruff
         run: .venv/bin/ruff check .
+
+      - name: Pylint
+        run: .venv/bin/pylint ovos_switchboard scripts

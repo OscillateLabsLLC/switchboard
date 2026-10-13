@@ -13,8 +13,8 @@ import threading
 
 from ovos_switchboard.core.device import adapt_definition
 
+
 DEFAULT_SESSION = "default"
-SYNC_TIMEOUT_S = 10
 # ocp_pipeline .intent file -> intent name OCP dispatches; media_stop dispatches as ovos.common_play:stop
 OCP_INTENTS = {"play.intent": "play", "pause.intent": "pause", "next.intent": "next",
                "prev.intent": "prev", "resume.intent": "resume", "media_stop.intent": "stop"}
@@ -22,11 +22,18 @@ OCP_SKILL_IDS = {"stop": "ovos.common_play"}
 
 
 def session_of(message):
+    """The message's session id, or the default session."""
     sess = message.context.get("session")
     return sess.get("session_id", DEFAULT_SESSION) if isinstance(sess, dict) else DEFAULT_SESSION
 
 
+def skill_of(message):
+    """The skill a registration message is about: its data, else its context."""
+    return message.data.get("skill_id") or message.context.get("skill_id")
+
+
 class IntentRegistry:
+    """The default session's registered intents, kept current from bus broadcasts."""
     def __init__(self, bus, on_change=lambda: None):
         self.bus, self.on_change = bus, on_change
         self.lock = threading.Lock()
@@ -43,10 +50,12 @@ class IntentRegistry:
             bus.on(topic, handler)
 
     def shutdown(self):
+        """Stop listening to registration broadcasts."""
         for topic, handler in self.handlers.items():
             self.bus.remove(topic, handler)
 
     def add(self, skill_id, intent_name, lang, method, payload):
+        """Record one intent definition and signal a change."""
         with self.lock:
             self.entries[(skill_id, intent_name, lang.lower(), method)] = {"enabled": True, "definition": payload}
         self.on_change()
@@ -59,19 +68,19 @@ class IntentRegistry:
         self.add(data["skill_id"], data["intent_name"], data["lang"], method, data)
 
     def _on_deregister(self, message):
-        skill_id, name = message.data.get("skill_id") or message.context.get("skill_id"), message.data.get("intent_name")
+        skill_id, name = skill_of(message), message.data.get("intent_name")
         lang = (message.data.get("lang") or "").lower()
         if session_of(message) != DEFAULT_SESSION or not (skill_id and name):
             return
         self._drop(lambda k: k[0] == skill_id and k[1] == name and (not lang or k[2] == lang))
 
     def _on_skill_deregister(self, message):
-        skill_id = message.data.get("skill_id") or message.context.get("skill_id")
+        skill_id = skill_of(message)
         if session_of(message) == DEFAULT_SESSION and skill_id:
             self._drop(lambda k: k[0] == skill_id)
 
     def _on_enable_disable(self, message):
-        skill_id, name = message.data.get("skill_id") or message.context.get("skill_id"), message.data.get("intent_name")
+        skill_id, name = skill_of(message), message.data.get("intent_name")
         if session_of(message) != DEFAULT_SESSION:
             return
         enabled = message.msg_type.endswith(".enable")
@@ -90,17 +99,17 @@ class IntentRegistry:
         if gone:
             self.on_change()
 
-    def sync(self):
+    def sync(self, timeout_s):
         """Pull everything ovos-core's manifest already holds. Call from a worker thread, never a bus handler."""
         from ovos_bus_client.message import Message
         listing = self.bus.wait_for_response(Message("ovos.intent.list", {}), "ovos.intent.list.response",
-                                             timeout=SYNC_TIMEOUT_S)
+                                             timeout=timeout_s)
         if not listing or not listing.data.get("ok"):
             return 0
         added = 0
         for skill_id in sorted({i["skill_id"] for i in listing.data.get("intents") or []}):
             reply = self.bus.wait_for_response(Message("ovos.intent.describe", {"skill_id": skill_id}),
-                                               "ovos.intent.describe.response", timeout=SYNC_TIMEOUT_S)
+                                               "ovos.intent.describe.response", timeout=timeout_s)
             for d in (reply.data.get("definitions") or []) if reply and reply.data.get("ok") else []:
                 if d.get("session_id", DEFAULT_SESSION) == DEFAULT_SESSION:
                     with self.lock:
@@ -112,6 +121,7 @@ class IntentRegistry:
         return added
 
     def add_ocp_templates(self, lang="en-us"):
+        """Add OCP's pipeline-private templates for `lang`; returns how many."""
         try:
             import ocp_pipeline
         except ImportError:
@@ -121,7 +131,7 @@ class IntentRegistry:
         for fname, name in OCP_INTENTS.items():
             path = os.path.join(base, fname)
             if os.path.exists(path):
-                with open(path) as f:
+                with open(path, encoding="utf-8") as f:
                     samples = [line.strip() for line in f if line.strip() and not line.startswith("#")]
                 self.add(OCP_SKILL_IDS.get(name, "ocp"), name, lang, "template", {"samples": samples})
                 added += 1

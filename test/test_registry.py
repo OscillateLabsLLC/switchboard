@@ -43,7 +43,7 @@ def test_other_sessions_do_not_train_the_router(bus):
     bus.emit(Message("ovos.intent.register.template",
                      {"skill_id": HA, "intent_name": "turn.on", "lang": "en-us", "samples": ["turn on {entity}"]},
                      {"session": {"session_id": "remote-client"}}))
-    assert reg.definitions() == {}
+    assert not reg.definitions()
 
 
 def test_sync_pulls_what_core_already_holds(bus):
@@ -57,5 +57,5 @@ def test_sync_pulls_what_core_already_holds(bus):
     bus.on("ovos.intent.list", answer_list)
     bus.on("ovos.intent.describe", answer_describe)
     reg = IntentRegistry(bus)
-    assert reg.sync() == 1
+    assert reg.sync(timeout_s=1) == 1
     assert reg.definitions()[HA][0]["lang"] == "en-us"

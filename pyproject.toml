@@ -39,6 +39,7 @@ test = [
     "pytest-cov",
 ]
 dev = [
+    "pylint>=3.0.0",
     "ruff",
 ]
 
@@ -60,10 +61,33 @@ path = "ovos_switchboard/version.py"
 packages = ["ovos_switchboard"]
 
 [tool.ruff]
-line-length = 120
+line-length = 119
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E", # pycodestyle
+    "F", # pyflakes
+    "I", # isort
+]
 
 [tool.ruff.lint.isort]
+lines-after-imports = 2
+combine-as-imports = true
 known-first-party = ["ovos_switchboard", "conftest"]
+
+[tool.pylint.format]
+max-line-length = 119
+
+[tool.pylint.messages_control]
+disable = [
+    "W0702", # bare-except
+    "W0718", # broad-exception-caught
+    "C0114", # missing-module-docstring
+    "W0201", # attribute-defined-outside-init
+    "C0415", # import-outside-toplevel
+    "R0903", # too-few-public-methods: stages and ports are single-method by design
+]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

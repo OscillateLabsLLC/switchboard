@@ -16,13 +16,16 @@ from ovos_switchboard.core.device import DECLINE
 from ovos_switchboard.core.schema import UNMAPPED
 from ovos_switchboard.core.templates import SLOT_TOKEN
 
+
 PIPELINE_SERVED = {"knowledge.ask", "stop"}
 LOGREG_C = 10.0
 LOGREG_MAX_ITER = 3000
 
 
 class CharEncoder:
+    """Character and word n-gram TF-IDF features."""
     def fit(self, texts):
+        """Learn the vocabulary from the training texts."""
         from sklearn.feature_extraction.text import TfidfVectorizer
         from sklearn.pipeline import make_union
         self.v = make_union(
@@ -32,19 +35,24 @@ class CharEncoder:
         return self
 
     def encode(self, texts):
+        """L2-normalized features for `texts`."""
         from sklearn.preprocessing import normalize
         return normalize(self.v.transform(texts))
 
 
 class LogRegHead:
-    def fit(self, X, y):
+    """Class-balanced logistic regression over the encoded features."""
+    def fit(self, features, labels):
+        """Train on encoded features and their labels."""
         from sklearn.linear_model import LogisticRegression
-        self.m = LogisticRegression(C=LOGREG_C, max_iter=LOGREG_MAX_ITER, class_weight="balanced").fit(X, y)
+        model = LogisticRegression(C=LOGREG_C, max_iter=LOGREG_MAX_ITER, class_weight="balanced")
+        self.m = model.fit(features, labels)
         self.classes = list(self.m.classes_)
         return self
 
-    def scores(self, X):
-        return self.m.predict_proba(X)
+    def scores(self, features):
+        """Class probabilities per row, in `classes` order."""
+        return self.m.predict_proba(features)
 
 
 def phrase_rows(examples, schema):
@@ -58,6 +66,8 @@ def phrase_rows(examples, schema):
 
 
 def training_data(device, schema, synthetic=(), device_classes_only=True):
+    """(text, label) rows: device phrases, schema descriptions and synthetic rows. With device_classes_only, only
+    classes this device can execute (plus the decline class)."""
     rows = phrase_rows(device.examples, schema)
     rows += [(spec["description"].lower(), canon) for canon, spec in schema.intents.items()]
     rows += [(r.get("masked", r["example"]).lower(), r["intent"]) for r in synthetic]
@@ -73,6 +83,7 @@ def training_data(device, schema, synthetic=(), device_classes_only=True):
 
 
 class Classifier:
+    """Intent classifier trained on the device's own phrases plus reviewed synthetic examples."""
     def __init__(self, device, schema, synthetic=(), device_classes_only=True):
         """synthetic: rows carrying their canonical intent or DECLINE (reviewed examples, dialog negatives)."""
         rows = training_data(device, schema, synthetic, device_classes_only)

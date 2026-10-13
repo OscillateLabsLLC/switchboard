@@ -12,13 +12,14 @@ slot, they correspond. Unmappable slots are dropped (never guessed).
 """
 import re
 
-from ovos_switchboard.core.templates import SLOT, literal_words, named_template_regex
+from ovos_switchboard.core.templates import LITERAL_EXPANSION_LIMIT, SLOT, literal_words, named_template_regex
+
 
 TRAILING_COURTESY = re.compile(r"\s+(please|thanks|thank you)$")
-LITERAL_EXPANSION_LIMIT = 50
 
 
 class SlotExtractor:
+    """Canonical slot values from the device's templates for a canonical intent."""
     def __init__(self, device, schema):
         """Other devices' manifests contribute templates too (Neon's Adapt-only alerts have none; the OVOS alerts
         templates describe the same canonical intents)."""
@@ -51,13 +52,11 @@ class SlotExtractor:
         """Canonical slots for `canon` from the best-matching template (most literal words), or {}."""
         utt = utterance.lower().strip()
         for mode in ("full", "loose") if loose else ("full",):
-            best = None
-            for lit, full, lrx, renames in self.by_canon.get(canon, []):
-                m = full.match(utt) if mode == "full" else lrx.search(utt)
-                if m and (best is None or lit > best[0]):
-                    best = (lit, m, renames)
-            if best:
-                return self._canonical(canon, best[1], best[2])
+            hits = [(lit, m, renames) for lit, full, lrx, renames in self.by_canon.get(canon, [])
+                    if (m := full.match(utt) if mode == "full" else lrx.search(utt))]
+            if hits:
+                _, match, renames = max(hits, key=lambda candidate: candidate[0])  # ties: the first template wins
+                return self._canonical(canon, match, renames)
         return {}
 
     def _canonical(self, canon, match, renames):

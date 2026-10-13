@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from ovos_switchboard.core.templates import MAX_PER_LINE, SLOT, clean, expand, expansions, template_regex
 
+
 MAX_KEYWORD_EXAMPLES = 40
 DECLINE = "__decline__"  # training class for "should not act"
 
@@ -24,12 +25,14 @@ def vkey(name):
 
 
 def read_jsonl(path):
-    with open(path) as f:
+    """Every row of a JSONL file."""
+    with open(path, encoding="utf-8") as f:
         return [json.loads(line) for line in f]
 
 
 @dataclass
 class Device:
+    """One device's intents and the phrases that train its stages."""
     definitions: dict
     examples: list                    # {"label", "example", ...}: template expansions + keyword examples
     lang: str = "en-us"
@@ -37,6 +40,7 @@ class Device:
     shared_definitions: list = field(default_factory=list)   # other devices' manifests (slot templates only)
 
     def own_labels(self):
+        """skill_id:intent_name for every intent this device registered."""
         return [f"{sid}:{d['intent_name']}" for sid, defs in self.definitions.items()
                 if isinstance(defs, list) for d in defs]
 
@@ -50,8 +54,9 @@ class Device:
 
     @classmethod
     def from_files(cls, manifest, examples, lang="en-us", shared_examples=(), shared_manifests=()):
+        """Offline: a device from harness files (a manifest and examples JSONL)."""
         def manifest_defs(path):
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 return json.load(f)["definitions"]
         return cls(definitions=manifest_defs(manifest), examples=read_jsonl(examples), lang=lang,
                    shared_examples=[r for p in shared_examples for r in read_jsonl(p)],
@@ -65,6 +70,7 @@ class Device:
 
 
 def derive_examples(definitions, lang):
+    """Training phrases from live definitions: template expansions and keyword combinations."""
     out, seen = [], set()
     for skill_id, defs in definitions.items():
         for d in defs if isinstance(defs, list) else []:
@@ -149,4 +155,5 @@ PUNCTUATION = str.maketrans("", "", string.punctuation)
 
 
 def normalize(s):
+    """Lowercase, strip punctuation, collapse whitespace."""
     return re.sub(r"\s+", " ", s.lower().translate(PUNCTUATION)).strip()

@@ -7,6 +7,7 @@ from ovos_switchboard.core.classifier import Classifier
 from ovos_switchboard.core.device import Device, harvest_dialog_negatives
 from ovos_switchboard.core.exact import ExactLayer
 from ovos_switchboard.core.labels import LabelSelector
+from ovos_switchboard.core.options import ClassifierOptions, EchoOptions, LLMOptions
 from ovos_switchboard.core.router import Router
 from ovos_switchboard.core.schema import Schema
 from ovos_switchboard.core.shortlist import Shortlist
@@ -14,6 +15,7 @@ from ovos_switchboard.core.slots import SlotExtractor
 from ovos_switchboard.core.stages import ClassifierStage, EchoStage, ExactStage, LabelResolver, LLMStage
 from ovos_switchboard.core.tools import build_tools
 from ovos_switchboard.core.verdict import Outcome, Verdict
+
 
 COLD = {"gap_s": None, "echo_run": 0}
 
@@ -34,20 +36,21 @@ class Parts:
         self.classifier = Classifier(self.device, self.schema, self.synthetic)
 
     def classifier_stage(self, **kw):
-        return ClassifierStage(self.classifier, self.resolver, **kw)
+        return ClassifierStage(self.classifier, self.resolver, ClassifierOptions(**kw))
 
     def llm_stage(self, llm, **kw):
-        return LLMStage(llm, Shortlist(self.tools, self.device.examples), self.tools, self.schema, self.resolver, **kw)
+        return LLMStage(llm, Shortlist(self.tools, self.device.examples), self.schema, self.resolver, LLMOptions(**kw))
 
 
-@pytest.fixture(scope="module")
-def parts():
+@pytest.fixture(name="parts", scope="module")
+def parts_fixture():
     return Parts()
 
 
 def test_echo_stage():
-    assert EchoStage(4).decide("x", {"echo_run": 4}).outcome is Outcome.DECLINE
-    assert EchoStage(4).decide("x", {"echo_run": 3}).outcome is Outcome.PASS
+    stage = EchoStage(EchoOptions(echo_run_min=4))
+    assert stage.decide("x", {"echo_run": 4}).outcome is Outcome.DECLINE
+    assert stage.decide("x", {"echo_run": 3}).outcome is Outcome.PASS
 
 
 def test_exact_stage_dispatches_declared_phrases_with_native_slots(parts):
@@ -118,7 +121,7 @@ def test_a_dispatch_must_name_a_skill_label():
 
 
 def test_router_composes_stages_in_measured_order(parts):
-    r = Router(parts.device, parts.schema, parts.tools, parts.synthetic, StubLLM("ignore"))
+    r = Router(parts.device, parts.schema, parts.tools, synthetic=parts.synthetic, llm=StubLLM("ignore"))
     assert r.route("turn on the desk lamp", {"echo_run": 4}) == {"intent": None, "stage": "echo"}
     assert r.route("turn on the desk lamp")["stage"] == "exact"
     assert r.route("whats the time right now")["stage"] == "classifier"

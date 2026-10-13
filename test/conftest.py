@@ -2,7 +2,8 @@ import pytest
 from ovos_bus_client.message import Message
 from ovos_utils.fakebus import FakeBus
 
-from ovos_switchboard.core.ports import LLMUnavailable
+from ovos_switchboard.core.ports import LLMPort, LLMUnavailable
+
 
 HA = "skill-homeassistant.oscillatelabsllc"
 DATETIME = "ovos-skill-date-time.openvoiceos"
@@ -34,7 +35,7 @@ def register_all(bus):
     bus.emit(Message("ovos.intent.register.keyword", WEATHER_KEYWORD))
 
 
-class StubLLM:
+class StubLLM(LLMPort):
     """Stands in for LLMClient: scripted tool choice and gate probability."""
 
     def __init__(self, tool="ignore", args=None, p_yes=0.99, fail=False):
@@ -52,6 +53,6 @@ class StubLLM:
         return {"p_yes": self.p_yes, "ms": 1.0}
 
 
-@pytest.fixture
-def bus():
+@pytest.fixture(name="bus")
+def bus_fixture():
     return FakeBus()
