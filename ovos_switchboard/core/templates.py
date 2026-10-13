@@ -10,6 +10,9 @@ MAX_PER_LINE = 200
 LITERAL_EXPANSION_LIMIT = 50  # expansions examined when counting a template's literal words
 SLOT = re.compile(r"\{+([a-z_]+)\}+")
 SLOT_TOKEN = re.compile(r"\{+[a-z_]+\}+")
+# A template space: whitespace, or nothing where an omitted [optional] group leaves a word edge. Never zero
+# characters inside a word, so "play {query}" doesn't match "playing by".
+WORD_GAP = r"(?:\s+|\b)"
 
 
 def split_top(s, sep="|"):
@@ -88,7 +91,7 @@ def _pattern(line, named):
                 pat += r"(?:.+?)"
             i = j + 1
             continue
-        pat += {"(": "(?:", ")": ")", "[": "(?:", "]": ")?", "|": "|", " ": r"\s*"}.get(ch, re.escape(ch))
+        pat += {"(": "(?:", ")": ")", "[": "(?:", "]": ")?", "|": "|", " ": WORD_GAP}.get(ch, re.escape(ch))
         i += 1
     return pat
 
