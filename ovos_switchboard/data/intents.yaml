@@ -1,0 +1,622 @@
+# Canonical intent schema. Doubles as the Phase 1 schema prototype.
+#
+# `ovos:` maps real OVOS labels (skill_id:intent) to each canonical intent.
+# An entry is either a bare label or {label, slots: {ovos_slot: canonical_slot}}.
+# Mappings were pre-filled from .intent files in the skill repos
+# (harvest_examples.py). Adapt/.voc-based intents (most Neon alerts, weather,
+# user settings, messaging) still need mapping on a live stack: run_ovos.py
+# prints the unmapped labels it sees.
+#
+# Canonical intents may be coarser than OVOS labels (many-to-one is fine).
+# risk: low | medium | high. High-risk wrong fires are reported separately.
+# Intents with no backing skill (lock.*, cover.*) are capabilities you want
+# routed (HA Assist / LLM fallback); they stay as high-risk test targets.
+
+intents:
+  alarm.cancel:
+    risk: medium
+    slots: ["time", "date"]
+    description: "Cancel an alarm"
+    ovos: []
+  alarm.set:
+    risk: low
+    slots: ["time", "date", "recurrence"]
+    description: "Set a wake-up or clock alarm"
+    ovos:
+      - skill-alerts.neongeckocom:CreateAlarm
+      - skill-alerts.neongeckocom:wake_me
+      - {label: ovos-skill-alerts.openvoiceos:create_alarm, slots: {"days": "recurrence"}}
+  alerts.list:
+    risk: low
+    slots: []
+    description: "List active timers, alarms, and reminders"
+    ovos:
+      - skill-alerts.neongeckocom:ListAllAlerts
+      - skill-alerts.neongeckocom:NextAlert
+      - skill-alerts.neongeckocom:list_alerts
+      - ovos-skill-alerts.openvoiceos:list_alerts
+  app.close:
+    risk: medium
+    slots: ["app"]
+    description: "Quit a desktop application"
+    ovos:
+      - {label: skill-mac-application-launcher.oscillatelabsllc:close, slots: {"application": "app"}}
+  app.launch:
+    risk: low
+    slots: ["app"]
+    description: "Open or switch to a desktop application"
+    ovos:
+      - {label: skill-mac-application-launcher.oscillatelabsllc:launch, slots: {"application": "app"}}
+      # launcher >=0.13 answers via fallback; one label covers open AND close (undercounts app.close)
+      - ovos.skills.fallback.ovos-skill-application-launcher.openvoiceos.request
+      # Neon launcher opens phone/desktop apps (Mike labelled these app.launch, 2026-10-11)
+      - {label: skill-launcher.neongeckocom:launch_program, slots: {"program": "app"}}
+  assistant.about:
+    risk: low
+    slots: []
+    description: "Questions about the assistant itself: name, maker, version"
+    ovos:
+      - skill-about.neongeckocom:LicenseIntent
+      - skill-about.neongeckocom:ListSkillsIntent
+      - skill-personal.neongeckocom:WhatIsYourName
+      - skill-personal.neongeckocom:WhatAreYou
+      - skill-personal.neongeckocom:WhatIsYourEmail
+      - skill-personal.neongeckocom:WhenWereYouBorn
+      - skill-personal.neongeckocom:WhereAreYou
+      - skill-personal.neongeckocom:WhereWereYouBorn
+      - skill-personal.neongeckocom:WhoAreYou
+      - skill-personal.neongeckocom:WhoMadeYou
+      - skill-update.neongeckocom:core_version
+      - ovos-skill-personal.openvoiceos:who_are_you
+      - ovos-skill-personal.openvoiceos:who_made_you
+      - ovos-skill-personal.openvoiceos:what_are_you
+  cover.close:
+    risk: medium
+    slots: ["cover"]
+    description: "Close the garage door or another cover"
+    ovos: []
+  cover.open:
+    risk: high
+    slots: ["cover"]
+    description: "Open the garage door or another cover"
+    ovos: []
+  data.clear:
+    risk: high
+    slots: ["data_type"]
+    description: "Delete stored user data, transcripts, or recordings"
+    ovos:
+      - {label: skill-data_controls.neongeckocom:clear_data, slots: {"dataset": "data_type"}}
+  date.current:
+    risk: low
+    slots: []
+    description: "Today's date or day of week"
+    ovos:
+      - skill-date_time.neongeckocom:what.day.is.it
+      - skill-date_time.neongeckocom:what.dow.is.it
+      - ovos-skill-date-time.openvoiceos:what_day_is_it
+      - ovos-skill-date-time.openvoiceos:what_month_is_it
+      - ovos-skill-date-time.openvoiceos:weekday_for_date
+      - ovos-skill-date-time.openvoiceos:date_future_weekend
+      - ovos-skill-date-time.openvoiceos:date_last_weekend
+  device.off:
+    risk: low
+    slots: ["entity"]
+    description: "Turn off a smart-home entity"
+    ovos:
+      - skill-homeassistant.oscillatelabsllc:turn.off
+  device.on:
+    risk: low
+    slots: ["entity"]
+    description: "Turn on a smart-home entity: lights, switches, fans"
+    ovos:
+      - skill-homeassistant.oscillatelabsllc:turn.on
+  device.status:
+    risk: low
+    slots: ["entity"]
+    description: "State, temperature, brightness, or color of a smart-home entity"
+    ovos:
+      - skill-homeassistant.oscillatelabsllc:lights.get.brightness
+      - skill-homeassistant.oscillatelabsllc:lights.get.color
+      - skill-homeassistant.oscillatelabsllc:sensor
+  device.stop:
+    risk: low
+    slots: ["entity"]
+    description: "Stop a smart-home device (vacuum, fan, media player)"
+    ovos:
+      - skill-homeassistant.oscillatelabsllc:stop
+  easter_egg:
+    risk: low
+    slots: []
+    description: "Pop-culture easter eggs: pod bay doors, stardate, robot laws, character quotes"
+    ovos:
+      - skill-easter-eggs.openvoiceos:adult_mode_intent
+      - skill-easter-eggs.openvoiceos:arnold_intent
+      - skill-easter-eggs.openvoiceos:bender_intent
+      - skill-easter-eggs.openvoiceos:bill_and_ted_intent
+      - skill-easter-eggs.openvoiceos:conan_intent
+      - skill-easter-eggs.openvoiceos:duke_nukem_intent
+      - skill-easter-eggs.openvoiceos:glados_intent
+      - skill-easter-eggs.openvoiceos:grandma_mode_intent
+      - skill-easter-eggs.openvoiceos:hal_intent
+      - skill-easter-eggs.openvoiceos:languages_you_speak_intent
+      - skill-easter-eggs.openvoiceos:law_of_robotics
+      - skill-easter-eggs.openvoiceos:malibu_stacey_intent
+      - skill-easter-eggs.openvoiceos:pod_bay_doors_intent
+      - skill-easter-eggs.openvoiceos:portal_intent
+      - skill-easter-eggs.openvoiceos:rock_paper_scissors_lizard_spock_intent
+      - skill-easter-eggs.openvoiceos:sing_intent
+      - skill-easter-eggs.openvoiceos:stardate_intent
+  ha.assist:
+    risk: medium
+    slots: ["command"]
+    description: "Pass a free-form command to Home Assistant Assist"
+    ovos:
+      - skill-homeassistant.oscillatelabsllc:assist
+  joke.tell:
+    risk: low
+    slots: ["topic"]
+    description: "Tell a joke"
+    ovos:
+      - skill-jokes.neongeckocom:joke
+      - {label: skill-jokes.neongeckocom:search_joke, slots: {"search": "topic"}}
+      # repo has no packaging, so the harvester labels it by folder; real ID unverified
+      - NeonGeckoCom_skill-jokes:joke
+      - {label: NeonGeckoCom_skill-jokes:search_joke, slots: {"search": "topic"}}
+      - ovos-skill-icanhazdadjokes.openvoiceos:joke
+      - {label: ovos-skill-icanhazdadjokes.openvoiceos:search_joke, slots: {"query": "topic"}}
+  knowledge.ask:
+    risk: low
+    slots: []
+    description: "General knowledge question (meta-tool; full utterance is the query)"
+    ovos:
+      - ovos-skill-hello-world.openvoiceos:thank_you_intent   # small talk (Mike, 2026-10-12)
+      - ovos-skill-hello-world.openvoiceos:greetings
+      - kiwix-mcp.oscillatelabsllc:search_kiwix
+      - kiwix-mcp.oscillatelabsllc:tell_more
+      - skill-fallback_llm.neongeckocom:ask_llm
+      - skill-fallback_llm.neongeckocom:chat_with_llm
+      - skill-fallback_wolfram_alpha.neongeckocom:AskWolfram
+      - skill-fallback_wolfram_alpha.neongeckocom:WolframSource
+      - skill-ovos-ddg.openvoiceos:search_duck
+      - skill-ovos-ddg.openvoiceos:DuckMore
+      - skill-personal.neongeckocom:HowAreYou
+      - {label: skill-wikipedia.neongeckocom:wiki, slots: {"query": "question"}}
+      - skill-wikipedia.neongeckocom:wikiroulette
+      - common_query.question
+      - question:action.ovos-skill-ddg.openvoiceos
+      - persona:query
+      # DDG fallback speaks a web answer: an action, not a decline
+      - ovos.skills.fallback.ovos-skill-ddg.openvoiceos.request
+  lights.brightness:
+    risk: low
+    slots: ["entity", "level"]
+    description: "Dim or brighten lights"
+    ovos:
+      - {label: skill-homeassistant.oscillatelabsllc:lights.set.brightness, slots: {"brightness": "level"}}
+      - skill-homeassistant.oscillatelabsllc:lights.increase.brightness
+      - skill-homeassistant.oscillatelabsllc:lights.decrease.brightness
+  lights.color:
+    risk: low
+    slots: ["entity", "color"]
+    description: "Change light color or color temperature"
+    ovos:
+      - skill-homeassistant.oscillatelabsllc:lights.set.color
+  lock.lock:
+    risk: medium
+    slots: ["door"]
+    description: "Lock a door"
+    ovos: []
+  lock.status:
+    risk: low
+    slots: ["door"]
+    description: "Check whether a door is locked"
+    ovos: []
+  lock.unlock:
+    risk: high
+    slots: ["door"]
+    description: "Unlock a door"
+    ovos: []
+  meal.add:
+    risk: low
+    slots: []
+    description: "Add a meal to the meal list"
+    ovos:
+      - skill-meal-plan.oscillatelabsllc:add.meal
+  meal.list:
+    risk: low
+    slots: []
+    description: "List saved meals"
+    ovos:
+      - skill-meal-plan.oscillatelabsllc:list.meal
+  meal.remove:
+    risk: low
+    slots: []
+    description: "Remove a meal from the list"
+    ovos:
+      - skill-meal-plan.oscillatelabsllc:remove.meal
+  meal.suggest:
+    risk: low
+    slots: []
+    description: "Suggest what to cook or eat (meal plan)"
+    ovos:
+      - skill-meal-plan.oscillatelabsllc:plan.meal
+  media.next:
+    risk: low
+    slots: ["player"]
+    description: "Skip to the next track"
+    ovos:
+      - {label: skill-musicassistant.oscillatelabsllc:next, slots: {"location": "player"}}
+      - ocp:next
+  media.pause:
+    risk: low
+    slots: ["player"]
+    description: "Pause playback"
+    ovos:
+      - {label: skill-musicassistant.oscillatelabsllc:pause, slots: {"location": "player"}}
+      - ocp:pause
+  media.play:
+    risk: low
+    slots: ["query", "media_type", "room", "player"]
+    description: "Play music, podcasts, or other media (meta-tool)"
+    ovos:
+      - ovos-skill-white-noise.andlo:set_noise
+      - ovos-skill-white-noise.andlo:start_noise
+      - {label: skill-musicassistant.oscillatelabsllc:play_album, slots: {"location": "player"}}
+      - {label: skill-musicassistant.oscillatelabsllc:play_artist, slots: {"location": "player"}}
+      - {label: skill-musicassistant.oscillatelabsllc:play_playlist, slots: {"location": "player"}}
+      - {label: skill-musicassistant.oscillatelabsllc:play_radio, slots: {"location": "player"}}
+      - {label: skill-musicassistant.oscillatelabsllc:play_track, slots: {"location": "player"}}
+      - ocp:play
+      - ovos.common_play.play_search
+  media.previous:
+    risk: low
+    slots: ["player"]
+    description: "Go back to the previous track"
+    ovos:
+      - {label: skill-musicassistant.oscillatelabsllc:previous, slots: {"location": "player"}}
+      - ocp:prev
+  media.resume:
+    risk: low
+    slots: ["player"]
+    description: "Resume playback"
+    ovos:
+      - ocp:resume
+  monster.scan:
+    risk: low
+    slots: []
+    description: "Bedtime monster-under-the-bed check for kids"
+    ovos:
+      - skill-monster-scanner.oscillatelabsllc:MonsterScannerIntent
+  news.play:
+    risk: low
+    slots: ["source"]
+    description: "Play a news briefing"
+    ovos:
+      - skill-marvin-briefing.oscillatelabsllc:hear.recommended
+      - skill-marvin-briefing.oscillatelabsllc:article.count
+      - skill-news.neongeckocom:PlayTheNews
+      - ovos-skill-news.openvoiceos:news
+  random.choice:
+    risk: low
+    slots: []
+    description: "Help make a decision between options"
+    ovos:
+      - skill-ovos-randomness.openvoiceos:make-a-choice
+      - skill-ovos-randomness.openvoiceos:make_a_choice
+  random.coin:
+    risk: low
+    slots: []
+    description: "Flip a coin"
+    ovos:
+      - skill-ovos-randomness.openvoiceos:flip-a-coin
+      - skill-ovos-randomness.openvoiceos:flip_a_coin
+  random.dice:
+    risk: low
+    slots: ["number", "faces", "modifier", "mode"]
+    description: "Roll dice, including notation like 2d6+3 or a d20 with advantage"
+    ovos:
+      - skill-ovos-randomness.openvoiceos:roll-multiple-dice
+      - skill-ovos-randomness.openvoiceos:roll-single-die
+      - skill-ovos-randomness.openvoiceos:roll_single_die
+      - skill-ovos-randomness.openvoiceos:roll_multiple_dice
+  random.fortune:
+    risk: low
+    slots: []
+    description: "Fortune teller"
+    ovos:
+      - skill-ovos-randomness.openvoiceos:fortune-teller
+      - skill-ovos-randomness.openvoiceos:fortune_teller
+  random.number:
+    risk: low
+    slots: ["lower", "upper"]
+    description: "Pick a random number in a range"
+    ovos:
+      - skill-ovos-randomness.openvoiceos:pick-a-number
+      - skill-ovos-randomness.openvoiceos:pick_a_number
+  reminder.set:
+    risk: low
+    slots: ["task", "time", "date", "duration"]
+    description: "Set a reminder for a task"
+    ovos:
+      - skill-alerts.neongeckocom:CreateReminder
+      - skill-alerts.neongeckocom:CreateReminderAlt
+      - skill-alerts.neongeckocom:CreateEvent
+      - {label: ovos-skill-alerts.openvoiceos:create_reminder, slots: {"reminder": "task"}}
+  settings.change:
+    risk: low
+    slots: ["setting", "value"]
+    description: "Change a user preference: units, time format, speech rate, location, timezone, name, language"
+    ovos:
+      - skill-alerts.neongeckocom:quiet_hours_start
+      - skill-alerts.neongeckocom:quiet_hours_end
+      - skill-device_controls.neongeckocom:ChangeWakeWordIntent
+      - skill-device_controls.neongeckocom:ConfirmListeningIntent
+      - skill-device_controls.neongeckocom:ShowDebugIntent
+      - skill-device_controls.neongeckocom:SkipWWIntent
+      - skill-device_controls.neongeckocom:SoloModeIntent
+      - skill-device_controls.neongeckocom:StopSoloModeIntent
+      - skill-device_controls.neongeckocom:UseWWIntent
+      - skill-fallback_llm.neongeckocom:enable_fallback
+      - skill-fallback_llm.neongeckocom:disable_fallback
+      - skill-user_settings.neongeckocom:ChangeDate
+      - skill-user_settings.neongeckocom:ChangeDialog
+      - skill-user_settings.neongeckocom:ChangeLocationTimezone
+      - skill-user_settings.neongeckocom:ChangeTime
+      - skill-user_settings.neongeckocom:ChangeUnits
+      - skill-user_settings.neongeckocom:MyNameIs
+      - skill-user_settings.neongeckocom:NoSecondaryLanguage
+      - skill-user_settings.neongeckocom:SetHesitation
+      - skill-user_settings.neongeckocom:SetMyBirthday
+      - skill-user_settings.neongeckocom:SetMyEmail
+      - skill-user_settings.neongeckocom:SetMyLanguage
+      - skill-user_settings.neongeckocom:SetMyName
+      - skill-user_settings.neongeckocom:SetSTTLanguage
+      - skill-user_settings.neongeckocom:SetTTSLanguage
+      - skill-user_settings.neongeckocom:SpeakSpeed
+      - skill-user_settings.neongeckocom:Transcription
+      - {label: skill-user_settings.neongeckocom:language_stt, slots: {"request_language": "value"}}
+      - {label: skill-user_settings.neongeckocom:language_tts, slots: {"request_language": "value"}}
+  settings.query:
+    risk: low
+    slots: ["setting"]
+    description: "Ask what a user preference or personal detail is set to"
+    ovos:
+      - skill-user_settings.neongeckocom:SayMyBirthday
+      - skill-user_settings.neongeckocom:SayMyEmail
+      - skill-user_settings.neongeckocom:SayMyLanguageSettings
+      - skill-user_settings.neongeckocom:SayMyLocation
+      - skill-user_settings.neongeckocom:SayMyName
+      - skill-user_settings.neongeckocom:where_am_i
+      - skill-user_settings.neongeckocom:who_am_i
+      - skill-user_settings.neongeckocom:when_is_my_birthday
+      - skill-user_settings.neongeckocom:language_settings
+      - ovos-skill-diagnostics.openvoiceos:query_user_location
+      - ovos-skill-diagnostics.openvoiceos:query_langs
+  shopping.add:
+    risk: low
+    slots: ["item", "list"]
+    description: "Add items to a shopping list"
+    ovos:
+      - {label: ovos-skill-alerts.openvoiceos:add_list_subitems, slots: {"items": "item", "list_name": "list"}}
+  speak.repeat:
+    risk: low
+    slots: ["text"]
+    description: "Say back an exact phrase"
+    ovos:
+      - {label: skill-speak.neongeckocom:speak, slots: {"phrase": "text"}}
+      - {label: ovos-skill-parrot.openvoiceos:speak, slots: {"sentence": "text"}}
+  spelling.spell:
+    risk: low
+    slots: ["word"]
+    description: "Spell a word letter by letter"
+    ovos:
+      - skill-spelling.neongeckocom:SpellIntent
+      - skill-ovos-spelling.openvoiceos:spell
+  stop:
+    risk: low
+    slots: []
+    description: "Stop or cancel whatever is happening"
+    ovos:
+      - ovos-skill-white-noise.andlo:stop_noise
+      - ovos-stop-pipeline-plugin:global_stop
+      - mycroft.stop
+      - ovos.common_play:stop
+  system.ip:
+    risk: low
+    slots: []
+    description: "Report the device IP address"
+    ovos:
+      - skill-ip_address.neongeckocom:IPIntent
+      - ovos-skill-ip.openvoiceos:ip
+  system.restart:
+    risk: medium
+    slots: []
+    description: "Restart the assistant or device"
+    ovos:
+      - skill-device_controls.neongeckocom:restart
+  system.shutdown:
+    risk: high
+    slots: []
+    description: "Shut down the device"
+    ovos:
+      - skill-device_controls.neongeckocom:ExitShutdownIntent
+      - skill-device_controls.neongeckocom:exit
+      - skill-device_controls.neongeckocom:shutdown
+  system.update:
+    risk: medium
+    slots: []
+    description: "Check for or install software updates"
+    ovos:
+      - skill-update.neongeckocom:update_device
+      - skill-update.neongeckocom:update_configuration
+  thermostat.set:
+    risk: medium
+    slots: ["temperature", "zone"]
+    description: "Change thermostat target or heating/cooling"
+    ovos: []
+  time.current:
+    risk: low
+    slots: ["location"]
+    description: "Current time, optionally in another place"
+    ovos:
+      - skill-date_time.neongeckocom:what.time.is.it
+      - ovos-skill-date-time.openvoiceos:what_time_is_it
+  timer.cancel:
+    risk: low
+    slots: ["timer_name"]
+    description: "Cancel one or all timers"
+    ovos:
+      - skill-alerts.neongeckocom:CancelAlert
+      - {label: ovos-skill-alerts.openvoiceos:cancel_alert, slots: {"name": "timer_name"}}
+  timer.set:
+    risk: low
+    slots: ["duration", "timer_name"]
+    description: "Start a countdown timer"
+    ovos:
+      - skill-alerts.neongeckocom:CreateTimer
+      - ovos-skill-alerts.openvoiceos:create_timer
+  timer.status:
+    risk: low
+    slots: ["timer_name"]
+    description: "Time remaining on a timer"
+    ovos:
+      - skill-alerts.neongeckocom:TimerStatus
+      - {label: ovos-skill-alerts.openvoiceos:timer_status, slots: {"name": "timer_name"}}
+  translate.phrase:
+    risk: low
+    slots: ["phrase", "language"]
+    description: "Translate a phrase into another language"
+    ovos:
+      - skill-translation.neongeckocom:translate_phrase
+  volume.down:
+    risk: low
+    slots: ["player"]
+    description: "Decrease speaker volume"
+    ovos:
+      - ovos-skill-volume.openvoiceos:less_volume
+  volume.mute:
+    risk: low
+    slots: ["player"]
+    description: "Mute the speaker"
+    ovos:
+      - ovos-skill-volume.openvoiceos:volume_mute
+      - ovos-skill-volume.openvoiceos:volume_mute_toggle
+  volume.query:
+    risk: low
+    slots: []
+    description: "Report the current volume"
+    ovos:
+      - ovos-skill-volume.openvoiceos:current_volume
+      - ovos-skill-volume.openvoiceos:volume_level
+  volume.set:
+    risk: low
+    slots: ["level", "player"]
+    description: "Set speaker volume to a level"
+    ovos:
+      - {label: skill-musicassistant.oscillatelabsllc:volume, slots: {"volume_level": "level", "location": "player"}}
+      - {label: ovos-skill-volume.openvoiceos:change_volume, slots: {"amount": "level"}}
+      - ovos-skill-volume.openvoiceos:volume_reset
+  volume.unmute:
+    risk: low
+    slots: ["player"]
+    description: "Unmute the speaker"
+    ovos:
+      - ovos-skill-volume.openvoiceos:volume_unmute
+  volume.up:
+    risk: low
+    slots: ["player"]
+    description: "Increase speaker volume"
+    ovos:
+      - ovos-skill-volume.openvoiceos:increase_volume
+      - ovos-skill-volume.openvoiceos:volume_max_boost
+  weather.current:
+    risk: low
+    slots: ["location"]
+    description: "Current weather conditions"
+    ovos:
+      - skill-weather.neongeckocom:HandleCurrentWeather
+      - skill-weather.neongeckocom:HandleCurrentTemperature
+      - skill-weather.neongeckocom:HandleHowHotCold
+      - skill-weather.neongeckocom:HandleHowWindy
+      - skill-weather.neongeckocom:HandleHumidity
+      - skill-weather.neongeckocom:HandleIsItHot
+      - skill-weather.neongeckocom:HandleIsItWindy
+      - skill-weather.neongeckocom:HandleLikeOutside
+      - skill-weather.neongeckocom:HandleQueryCondition
+      - skill-weather.neongeckocom:HandleSunriseSunset
+      - skill-weather.neongeckocom:HandleHighTemperature
+      - skill-weather.neongeckocom:HandleLowTemperature
+      - ovos-skill-weather.openvoiceos:weather
+      - ovos-skill-weather.openvoiceos:temperature
+      - ovos-skill-weather.openvoiceos:sunrise
+      - ovos-skill-weather.openvoiceos:sunset
+      - ovos-skill-weather.openvoiceos:humidity
+  weather.forecast:
+    risk: low
+    slots: ["location", "date"]
+    description: "Weather forecast for a future time"
+    ovos:
+      - skill-weather.neongeckocom:HandleOneDayForecast
+      - skill-weather.neongeckocom:HandleDailyTemperature
+      - skill-weather.neongeckocom:HandleHourlyTemperature
+      - skill-weather.neongeckocom:HandleNextPrecipitation
+      - skill-weather.neongeckocom:HandleNumberDaysForecast
+      - skill-weather.neongeckocom:HandleWeatherAtTime
+      - skill-weather.neongeckocom:HandleWeatherLater
+      - skill-weather.neongeckocom:HandleWeekWeather
+      - skill-weather.neongeckocom:HandleWeekendForecast
+      - skill-weather.neongeckocom:do-i-need-an-umbrella
+      - ovos-skill-weather.openvoiceos:weather_condition
+  web.browse:
+    risk: low
+    slots: ["url"]
+    description: "Open a website in the browser"
+    ovos:
+      - skill-launcher.neongeckocom:BrowseWebsiteIntent
+
+  camera:
+    risk: low
+    slots: []
+    description: "Take a picture or video, or show the last one"
+    ovos:
+      - skill-camera.neongeckocom:TakePicIntent
+      - skill-camera.neongeckocom:TakeVidIntent
+      - skill-camera.neongeckocom:ShowLastIntent
+  demo:
+    risk: low
+    slots: []
+    description: "Run the assistant's demo"
+    ovos:
+      - skill-demo.neongeckocom:show_demo
+  email.draft:
+    risk: medium
+    slots: ["recipient", "body"]
+    description: "Draft an email"
+    ovos:
+      - skill-messaging.neongeckocom:DraftEmailIntent
+  ha.admin:
+    risk: low
+    slots: []
+    description: "Enable, disable, or refresh the Home Assistant integration"
+    ovos:
+      - skill-homeassistant.oscillatelabsllc:enable
+      - skill-homeassistant.oscillatelabsllc:disable
+      - skill-homeassistant.oscillatelabsllc:get.all.devices
+  message.send:
+    risk: medium
+    slots: ["recipient", "body"]
+    description: "Send a text message"
+    ovos:
+      - skill-communication.neongeckocom:SendMessageIntent
+# OVOS labels that mean the system declined (scored as intent: null).
+declined:
+  - ovos.skills.fallback.ovos-skill-fallback-unknown.openvoiceos.request
+
+# Utterances routed to these labels are excluded from scoring (Mike, 2026-10-12): comms other than
+# email drafting, and skills dropped from scope even though they still load on the Hub.
+out_of_scope:
+  - skill-fallback_llm.neongeckocom:email_chat_history
+  - skill-support_helper.neongeckocom:contact_support
+  - skill-audio-recording.neongeckocom:start_recording
+  - skill-speed_test.neongeckocom:run_speed_test
+  - skill-communication.neongeckocom:call      # phone calls: not in scope (Mike, 2026-10-12)

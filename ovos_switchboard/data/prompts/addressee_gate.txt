@@ -1,0 +1,5 @@
+A home voice assistant's microphone picked up the transcribed speech below. The microphone wakes on a wake word, but false wakes are common: it also hears conversations between people in the house, TV and radio, the assistant's own voice, and noise. Transcripts may contain speech-recognition errors.
+
+You cannot see any earlier conversation.
+
+Is this speech a request or question directed at the assistant? Answer only yes or no.
