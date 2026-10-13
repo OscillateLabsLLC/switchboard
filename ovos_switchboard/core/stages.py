@@ -1,5 +1,6 @@
 """The routing stages. Each decides one utterance on its own inputs and never consults another stage: the pipeline's
-order guarantees a stage only sees what earlier stages passed on.
+order guarantees a stage only sees what earlier stages passed on. One exception, by measurement: ExactStage may read
+the classifier MODEL's ranking (a port, not the classifier stage's verdict) to overrule catch-all templates.
 
   EchoStage        the utterance repeats the assistant's recent speech -> decline
   ExactStage       a declared template phrase with exactly one owner -> dispatch
@@ -13,7 +14,7 @@ order guarantees a stage only sees what earlier stages passed on.
 import time
 
 from ovos_switchboard.core.device import DECLINE
-from ovos_switchboard.core.options import ClassifierOptions, EchoOptions, LLMOptions
+from ovos_switchboard.core.options import ClassifierOptions, EchoOptions, ExactOptions, LLMOptions
 from ovos_switchboard.core.ports import LLMUnavailable
 from ovos_switchboard.core.schema import UNMAPPED
 from ovos_switchboard.core.tools import META_PREFIX
@@ -72,19 +73,39 @@ class EchoStage:
 
 
 class ExactStage:
-    """Dispatches utterances that match one intent's declared templates."""
+    """Dispatches utterances that match one intent's declared templates.
+
+    `ranker(utterance)` -> [(intent, confidence), ...] best first, or None while no classifier is built. Only
+    catch-all matches ("play {query}") consult it: a confident pick of another intent overrules them ("play
+    something like glados" is the easter egg; Neon's own "call me Neon, I am ..." is not a call)."""
     name = "exact"
 
-    def __init__(self, exact_layer, resolver, wake=None):
+    def __init__(self, exact_layer, resolver, wake=None, ranker=None,  # pylint: disable=R0913
+                 options=ExactOptions()):
         self.exact, self.resolver, self.wake = exact_layer, resolver, wake
+        self.ranker, self.options = ranker, options
 
     def decide(self, utterance, _context=None):
-        """DISPATCH to the unique template owner, else PASS."""
+        """DISPATCH to the unique template owner, else PASS. A catch-all owner yields to a confident classifier."""
         utterance = strip_wake_phrase(utterance, self.wake)
-        owner = self.exact.route(utterance.lower())
+        owner, catch_all = self.exact.match(utterance.lower())
         if not owner:
             return passed(self.name, "no unique template owner")
+        overruled = self._overruled(owner, utterance) if catch_all else None
+        if overruled:
+            return passed(self.name, "catch-all template overruled by the classifier", details=overruled)
         return resolved(self.name, owner, utterance, self.resolver, loose_slots=False, confidence=1.0)
+
+    def _overruled(self, owner, utterance):
+        """Details when the classifier ranks another intent first with catch_all_yield confidence, else None."""
+        threshold = self.options.catch_all_yield
+        ranking = self.ranker(utterance.lower()) if self.ranker and threshold > 0 else None
+        if not ranking:
+            return None
+        top, conf = ranking[0]
+        if top == owner or conf < threshold:
+            return None
+        return {"catch_all": owner, "overruled_by": top, "confidence": round(conf, 4)}
 
 
 class PrefixStage:

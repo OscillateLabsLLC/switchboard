@@ -104,6 +104,12 @@ def literal_words(line, limit=None):
     return min(len(SLOT_TOKEN.sub(" ", e).split()) for e in found)
 
 
+def is_catch_all(line):
+    """A slot behind fewer than two literal words ('play {query}', 'call {contact}'): it claims almost any speech
+    that starts with its one word."""
+    return "{" in line and literal_words(line) < 2
+
+
 def compiles(line):
     """Whether the template's named-group regex compiles."""
     try:
