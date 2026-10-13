@@ -113,6 +113,17 @@ since a spoken wake word is evidence the speech was meant for the assistant. Low
   installations get them without an overlay. Overlays are for what's specific to one household or distribution.
   Neon's mappings aren't final: they will grow as skills currently blacklisted on the Hub are enabled, so they are
   revisited each time Neon's skill set changes.
+- **A canonical intent groups labels that do the same thing** (Neon's `WhereWereYouBorn` and OVOS's
+  `where_were_you_born`), never sibling actions of one skill. When siblings share a class, the classifier learns
+  one class for all of them and a weaker second step (`LabelIndex.select`: template match, else nearest examples)
+  picks the handler, so "how's my CPU doing" can reach the right class and still get the memory handler. A skill
+  intent with no cross-skill equivalent gets its own canonical, or stays unmapped with an overlay entry that only
+  sets risk and a description.
+
+  Measured (`intent-eval/exp_handler_choice.py`, BENCH.md): 29 of the 70 canonicals already group siblings. On the
+  rows that can be judged, the wrong handler was picked once ("enable spicy mode" -> `malibu_stacey_intent`, via
+  nearest examples). Exact-stage dispatches pick the handler by template, so the risk is in classifier dispatches,
+  where label gold is thin. The Mac mappings follow the rule now; retrofitting the existing 29 waits for phase 1.
 
 ## Phases
 
@@ -123,16 +134,5 @@ since a spoken wake word is evidence the speech was meant for the assistant. Low
 3. **Choose the unmapped dispatch rule (section 1)** on phase 1 data. Ship it only if it's never worse on any slice.
 4. **Mapping proposals and label-keyed synthetic examples (sections 3 and 4).**
 5. **Risk heuristics (section 5),** together with the confirm flow.
-
-## Open question
-
-Should one canonical intent group several *different* actions of the same skill? The Mac draft does this:
-`system.diagnostics` covers six diagnostics intents (CPU, memory, disk, GPU, kernel, uptime). The classifier then
-learns one class for all six, and a weaker second step (`LabelIndex.select`: template match, else nearest examples)
-picks the handler. "How's my CPU doing" can reach the right class and still get the memory handler. Kept as six
-classes, the classifier makes that choice with everything it knows.
-
-Proposed rule: a canonical intent groups labels that do **the same thing** (Neon's `WhereWereYouBorn` and OVOS's
-`where_were_you_born`), never sibling actions of one skill. A skill intent with no cross-skill equivalent either
-gets its own canonical, or stays unmapped with an overlay entry that only sets risk and a description. Unmeasured:
-check on the harness before applying the Mac draft.
+6. **Retrofit the grouping rule** onto the existing schema's 29 sibling-grouping canonicals, judged on phase 1's
+   label-level gold.
