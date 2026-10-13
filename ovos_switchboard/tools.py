@@ -20,17 +20,18 @@ MAX_EXPANSIONS_PER_LINE = 50
 SKILL_AFFIXES = re.compile(r"^(ovos-skill-|skill-ovos-|skill-)|\.(openvoiceos|oscillatelabsllc|neongeckocom)$")
 META_PREFIX = "meta:"
 
+# Descriptions are part of the measured prompt: changing their text changes the LLM's routing.
 META_TOOLS = {
-    "ask_knowledge": ("A question or conversational request directed at the assistant that no other "
-                      "tool handles: facts, explanations, advice, chit-chat, quotes.",
+    "ask_knowledge": (("A question or conversational request directed at the assistant that no other "
+                       "tool handles: facts, explanations, advice, chit-chat, quotes."),
                       {"question": "the request, as spoken"}, ["question"]),
-    "stop": ("Stop whatever the assistant is currently doing: speaking, playing media, an "
-             "active timer or alarm sound.", {}, []),
-    "unsupported": ("A command clearly directed at the assistant that none of the other tools can "
-                    "perform. The assistant will say it can't do that.",
+    "stop": (("Stop whatever the assistant is currently doing: speaking, playing media, an "
+              "active timer or alarm sound."), {}, []),
+    "unsupported": (("A command clearly directed at the assistant that none of the other tools can "
+                     "perform. The assistant will say it can't do that."),
                     {"request": "the request, as spoken"}, ["request"]),
-    "ignore": ("The speech was NOT directed at the assistant: background conversation, TV or "
-               "radio, the assistant hearing its own voice, or noise. The assistant stays silent.",
+    "ignore": (("The speech was NOT directed at the assistant: background conversation, TV or "
+                "radio, the assistant hearing its own voice, or noise. The assistant stays silent."),
                {}, []),
 }
 

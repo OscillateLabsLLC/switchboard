@@ -29,7 +29,7 @@ class AdaptRule:
     def __init__(self, definition):
         self.steps = definition["steps"]
         self.vocab = {k: phrase_regex(v) for k, v in (definition.get("vocab") or {}).items()}
-        self.regex = {k: [re.compile(p, re.I) for p in v] for k, v in (definition.get("regex") or {}).items()}
+        self.regex = {k: [re.compile(p, re.IGNORECASE) for p in v] for k, v in (definition.get("regex") or {}).items()}
 
     def _find(self, name, utt):
         key = vkey(name)

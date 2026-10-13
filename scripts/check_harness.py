@@ -20,11 +20,11 @@ from ovos_switchboard.schema import Schema
 # Must match the harness's llm_fallback.py: the model name is part of every cached request body.
 HARNESS_MODEL = "Qwen/Qwen3-14B-AWQ"
 DEVICES = {
-    "mac": dict(manifest="introspection.json", examples="examples_live.jsonl",
-                synthetic=["synthetic_examples_slotted.jsonl", "dialog_negatives.jsonl"], tools="tools.json"),
-    "hub": dict(manifest="introspection_hub.json", examples="examples_hub.jsonl",
-                synthetic=["synthetic_examples_slotted.jsonl", "dialog_negatives_hub.jsonl"], tools="tools_hub.json",
-                shared_examples=["examples_live.jsonl"], shared_manifests=["introspection.json"]),
+    "mac": {"manifest": "introspection.json", "examples": "examples_live.jsonl",
+            "synthetic": ["synthetic_examples_slotted.jsonl", "dialog_negatives.jsonl"], "tools": "tools.json"},
+    "hub": {"manifest": "introspection_hub.json", "examples": "examples_hub.jsonl",
+            "synthetic": ["synthetic_examples_slotted.jsonl", "dialog_negatives_hub.jsonl"], "tools": "tools_hub.json",
+            "shared_examples": ["examples_live.jsonl"], "shared_manifests": ["introspection.json"]},
 }
 
 
@@ -38,15 +38,21 @@ class CacheOnlyClient(LLMClient):
 
 def build_router(harness, device, route):
     spec = DEVICES[device]
-    path = lambda name: os.path.join(harness, name)  # noqa: E731
+
+    def path(name):
+        return os.path.join(harness, name)
+
+    def prompt(name):
+        with open(path(f"prompts/{name}")) as f:
+            return f.read().strip()
+
     dev = Device.from_files(path(spec["manifest"]), path(spec["examples"]), [path(p) for p in spec["synthetic"]],
                             shared_examples=[path(p) for p in spec.get("shared_examples", [])],
                             shared_manifests=[path(p) for p in spec.get("shared_manifests", [])])
     with open(path(spec["tools"])) as f:
         tools_doc = json.load(f)
-    read = lambda name: open(path(f"prompts/{name}")).read().strip()  # noqa: E731
     llm = CacheOnlyClient(url="http://cache-only.invalid", model=HARNESS_MODEL,
-                          system_prompt=read("fallback_strict.txt"), gate_prompt=read("addressee_gate.txt"),
+                          system_prompt=prompt("fallback_strict.txt"), gate_prompt=prompt("addressee_gate.txt"),
                           cache_path=path("llm_cache.jsonl"))
     return Router(dev, Schema.load(path("intents.yaml")), tools_doc, llm, RouterConfig(route_decline_class=route))
 
@@ -81,7 +87,8 @@ def main(argv):
     for device in DEVICES:
         for route in ("always", "active"):
             router = build_router(harness, device, route)
-            ok = all([check(harness, cp, device, route, s, router) for s in splits]) and ok
+            results = [check(harness, cp, device, route, s, router) for s in splits]  # every split reports
+            ok = ok and all(results)
     sys.exit(0 if ok else 1)
 
 

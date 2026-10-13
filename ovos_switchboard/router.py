@@ -124,8 +124,17 @@ class Router:
             return d
         if d.get("stage") in ("llm", "llm_gate") and d.get("llm_tool") in self.tools_doc["labels"]:
             label = self.tools_doc["labels"][d["llm_tool"]]
-            return d if label.startswith(META_PREFIX) else {**d, "label": label, "match_data": d.get("tool_args", {})}
+            if label.startswith(META_PREFIX):
+                return d
+            return {**d, "label": label, "match_data": d.get("tool_args") or self._keyword_data(label, utterance)}
         if intent.startswith(UNMAPPED):
             return {**d, "label": intent.removeprefix(UNMAPPED), "match_data": {}}
         label, data, how = self.labels.select(intent, utterance)
         return {**d, "label": label, "match_data": data, "label_how": how}
+
+    def _keyword_data(self, label, utterance):
+        """Keyword tools carry no parameters; the vocab the skill reads (message.data["Location"]) comes from
+        evaluating its rule on the utterance."""
+        rule = self.labels.adapt.get(label)
+        hit = rule.evaluate(utterance.lower().strip()) if rule else None
+        return hit[1] if hit else {}

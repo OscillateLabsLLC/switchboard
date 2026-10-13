@@ -59,6 +59,9 @@ packages = ["ovos_switchboard"]
 [tool.ruff]
 line-length = 120
 
+[tool.ruff.lint.isort]
+known-first-party = ["ovos_switchboard", "conftest"]
+
 [tool.pytest.ini_options]
 testpaths = ["test"]
 addopts = "--cov=ovos_switchboard --cov-report=term-missing"
