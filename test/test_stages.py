@@ -132,3 +132,16 @@ def test_classifier_state_round_trips_exactly(parts):
     restored = Classifier.from_state(*parts.classifier.state())
     for utterance in ("whats the time right now", "i turned the lamp on for you", "turn off the porch light"):
         assert restored.rank(utterance) == parts.classifier.rank(utterance)
+
+
+class RankedClassifier:
+    def __init__(self, ranked):
+        self.ranked = ranked
+
+    def rank(self, _utterance):
+        return self.ranked
+
+
+def test_unmapped_top_class_passes_with_its_own_reason(parts):
+    stage = ClassifierStage(RankedClassifier([("__unmapped__:skill-x.someone:do_thing", 0.97)]), parts.resolver)
+    assert stage.decide("do the thing", COLD).reason == "unmapped intent"
