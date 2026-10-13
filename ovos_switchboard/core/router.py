@@ -40,8 +40,8 @@ class Router:
             self.exact_layer.enable_prefix(c.prefix_min_literal)
         self.echo = EchoStage(c.echo)
         self.exact = ExactStage(self.exact_layer, self.resolver)
-        self.classifier = ClassifierStage(Classifier(device, schema, synthetic, c.device_classes_only), self.resolver,
-                                          c.classifier)
+        classifier = Classifier.for_device(device, schema, synthetic, c.device_classes_only)
+        self.classifier = ClassifierStage(classifier, self.resolver, c.classifier)
         self.llm = LLMStage(llm, Shortlist(tools_doc, device.examples), schema, self.resolver, c.llm) if llm else None
 
     def route(self, utterance, context=None):

@@ -170,3 +170,32 @@ def test_invalid_settings_fail_at_load(bus):
     rt = SwitchboardRuntime(bus, Settings(decision_log=False), start=False)
     with pytest.raises(ValueError):
         ClassifierStep(bus, {"route_decline_class": "sometimes"}, runtime=rt)
+
+
+def wait_for(condition, timeout=5.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline and not condition():
+        time.sleep(0.02)
+    return condition()
+
+
+def test_rebuilds_wait_until_core_has_loaded_skills(bus):
+    rt = SwitchboardRuntime(bus, Settings(retrain_debounce_s=0.01, bus_timeout_s=0.1, decision_log=False),
+                            dialog_lines=lambda lang: DIALOG_LINES, start=False)
+    ExactStep(bus, {}, runtime=rt)
+    register_all(bus)
+    time.sleep(0.2)
+    assert rt.stage("exact") is None, "no rebuild while skills are still registering"
+    bus.emit(Message("mycroft.skills.initialized"))
+    assert wait_for(lambda: rt.stage("exact") is not None)
+    rt.shutdown()
+
+
+def test_a_reloaded_pipeline_builds_when_core_is_already_ready(bus):
+    bus.on("mycroft.skills.is_ready", lambda m: bus.emit(m.response({"status": True})))
+    rt = SwitchboardRuntime(bus, Settings(retrain_debounce_s=0.01, bus_timeout_s=0.1, decision_log=False),
+                            dialog_lines=lambda lang: DIALOG_LINES)
+    ExactStep(bus, {}, runtime=rt)
+    register_all(bus)
+    assert wait_for(lambda: rt.stage("exact") is not None)
+    rt.shutdown()

@@ -33,7 +33,7 @@ class Parts:
         self.tools = build_tools(self.definitions)
         self.synthetic = data.jsonl("synthetic_examples_slotted.jsonl") + harvest_dialog_negatives(
             DIALOG_LINES, self.definitions, "en-us")
-        self.classifier = Classifier(self.device, self.schema, self.synthetic)
+        self.classifier = Classifier.for_device(self.device, self.schema, self.synthetic)
 
     def classifier_stage(self, **kw):
         return ClassifierStage(self.classifier, self.resolver, ClassifierOptions(**kw))
@@ -126,3 +126,9 @@ def test_router_composes_stages_in_measured_order(parts):
     assert r.route("turn on the desk lamp")["stage"] == "exact"
     assert r.route("whats the time right now")["stage"] == "classifier"
     assert r.route("i turned the lamp on for you", {"gap_s": 10})["stage"] == "llm"
+
+
+def test_classifier_state_round_trips_exactly(parts):
+    restored = Classifier.from_state(*parts.classifier.state())
+    for utterance in ("whats the time right now", "i turned the lamp on for you", "turn off the porch light"):
+        assert restored.rank(utterance) == parts.classifier.rank(utterance)
