@@ -16,6 +16,7 @@ from typing import ClassVar
 from ovos_switchboard.adapters.bus_registry import IntentRegistry, session_of
 from ovos_switchboard.adapters.decision_log import DecisionLog
 from ovos_switchboard.adapters.dialog_files import installed_dialog_lines
+from ovos_switchboard.adapters.model_cache import ModelCache
 from ovos_switchboard.core.context import SpeechContext
 from ovos_switchboard.core.device import Device
 from ovos_switchboard.core.labels import LabelSelector
@@ -34,6 +35,8 @@ except ImportError:  # pragma: no cover
 MODES = ("shadow", "active")
 SPEAK_TOPICS = ("speak", "ovos.utterance.speak")
 OUTCOME_TOPICS = ("ovos.intent.matched", "ovos.intent.unmatched", "complete_intent_failure")
+SKILLS_INITIALIZED = "mycroft.skills.initialized"
+SKILLS_IS_READY = "mycroft.skills.is_ready"
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,9 @@ class Settings:  # pylint: disable=too-many-instance-attributes  # one field per
     decision_log: bool = True
     decision_log_path: str = ""
     decision_log_max_bytes: int = 5_000_000
+    model_cache: bool = True            # reuse trained models across restarts while their inputs are unchanged
+    model_cache_path: str = ""
+    model_cache_max: int = 2            # newest models kept per kind
     schema_path: str = ""
     speech: SpeechOptions = field(default_factory=SpeechOptions)
 
@@ -110,15 +116,19 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
         self.speech = SpeechContext(settings.speech)
         self.log = DecisionLog(settings.decision_log_path or None, settings.decision_log_max_bytes,
                                settings.decision_log)
+        self.models = ModelCache(settings.model_cache_path or None, settings.model_cache_max, settings.model_cache)
         self.builders, self.stages = {}, {}
         self.records, self.records_lock = {}, threading.Lock()
         self.timer, self.timer_lock = None, threading.Lock()
+        self.rebuild_lock = threading.Lock()
+        self.skills_ready = threading.Event()  # rebuilding mid-load trains on a partial set, so wait for core
         self.registry = IntentRegistry(bus, on_change=self.schedule)
         self.registry.add_ocp_templates(settings.lang)
         for topic in SPEAK_TOPICS:
             bus.on(topic, self._on_speak)
         for topic in OUTCOME_TOPICS:
             bus.on(topic, self._on_outcome)
+        bus.on(SKILLS_INITIALIZED, self._on_skills_initialized)
         if start:
             threading.Thread(target=self._startup, daemon=True, name="switchboard-startup").start()
 
@@ -132,12 +142,14 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
             self.bus.remove(topic, self._on_speak)
         for topic in OUTCOME_TOPICS:
             self.bus.remove(topic, self._on_outcome)
+        self.bus.remove(SKILLS_INITIALIZED, self._on_skills_initialized)
 
     # ---- stages ----
 
-    def provide(self, name, builder):
-        """builder(build: Build) -> stage. Built now if intents are known, and again on every registry change."""
-        self.builders[name] = builder
+    def provide(self, name, builder, slow=False):
+        """builder(build: Build) -> stage, rebuilt on every registry change. Slow builders (trained models) run
+        after the others, so cheap stages are usable while a model trains."""
+        self.builders[name] = (builder, slow)
         self.schedule()
 
     def stage(self, name):
@@ -145,7 +157,9 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
         return self.stages.get(name)
 
     def schedule(self):
-        """Rebuild once registrations have been quiet for retrain_debounce_s."""
+        """Rebuild once registrations have been quiet for retrain_debounce_s, and skills have finished loading."""
+        if not self.skills_ready.is_set():
+            return
         with self.timer_lock:
             if self.timer:
                 self.timer.cancel()
@@ -154,7 +168,11 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
             self.timer.start()
 
     def rebuild(self):
-        """Build every provided stage from the current registrations."""
+        """Build every provided stage from the current registrations, one rebuild at a time."""
+        with self.rebuild_lock:  # the snapshot is taken inside the lock, so the newest registrations win
+            self._rebuild()
+
+    def _rebuild(self):
         definitions = self.registry.definitions()
         if not definitions or not self.builders:
             return
@@ -162,11 +180,14 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
         device = Device.from_definitions(definitions, self.settings.lang)
         resolver = LabelResolver(LabelSelector(device, self.schema), SlotExtractor(device, self.schema))
         build = Build(definitions, device, resolver, self.schema, self.settings.lang)
-        for name, builder in list(self.builders.items()):
+        for name, (builder, _) in sorted(self.builders.items(), key=lambda item: item[1][1]):
+            t_stage = time.perf_counter()
             try:
                 self.stages[name] = builder(build)
             except Exception:
                 LOG.exception("rebuilding the %s stage failed; keeping the previous one", name)
+                continue
+            LOG.info("switchboard %s stage ready in %.1fs", name, time.perf_counter() - t_stage)
         LOG.info("switchboard rebuilt %s from %d intents in %.1fs", sorted(self.builders),
                  sum(map(len, definitions.values())), time.perf_counter() - t0)
 
@@ -199,6 +220,20 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
             self.registry.sync(self.settings.bus_timeout_s)
         except Exception:
             LOG.exception("initial intent sync failed; relying on registration broadcasts")
+        from ovos_bus_client.message import Message
+        reply = self.bus.wait_for_response(Message(SKILLS_IS_READY), f"{SKILLS_IS_READY}.response",
+                                           timeout=self.settings.bus_timeout_s)
+        if reply and reply.data.get("status"):  # loaded after core finished (a pipeline reload)
+            self._skills_loaded()
+
+    def _on_skills_initialized(self, _message):
+        threading.Thread(target=self._skills_loaded, daemon=True, name="switchboard-skills-loaded").start()
+
+    def _skills_loaded(self):
+        if self.skills_ready.is_set():
+            return
+        self.skills_ready.set()
+        self.schedule()
         self._check_hangup()
 
     def _check_hangup(self):

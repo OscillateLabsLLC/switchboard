@@ -19,7 +19,7 @@ from ovos_plugin_manager.templates.pipeline import IntentHandlerMatch, PipelineP
 from ovos_switchboard import data
 from ovos_switchboard.adapters.bus_registry import session_of
 from ovos_switchboard.adapters.openai_llm import LLMClient, LLMEndpoint
-from ovos_switchboard.core.classifier import Classifier
+from ovos_switchboard.core.classifier import Classifier, model_fingerprint, training_data
 from ovos_switchboard.core.device import harvest_dialog_negatives
 from ovos_switchboard.core.exact import ExactLayer
 from ovos_switchboard.core.options import ClassifierOptions, EchoOptions, LLMOptions, options_from
@@ -167,14 +167,19 @@ class ClassifierStep(SwitchboardStep):
     def setup(self):
         self.options = options_from(ClassifierOptions, self.config)
         self.synthetic = data.jsonl(SYNTHETIC_FILE)
-        self.runtime.provide(self.name, self.build)
+        self.runtime.provide(self.name, self.build, slow=True)
 
     def build(self, b):
-        """Train the classifier stage on the current registrations."""
-        rows = list(self.synthetic)
+        """The classifier stage for the current registrations, trained or loaded from the model cache."""
+        synthetic = list(self.synthetic)
         if self.options.dialog_negatives:
-            rows += harvest_dialog_negatives(self.runtime.dialog_lines(b.lang), b.definitions, b.lang)
-        return ClassifierStage(Classifier(b.device, b.schema, rows), b.resolver, self.options)
+            synthetic += harvest_dialog_negatives(self.runtime.dialog_lines(b.lang), b.definitions, b.lang)
+        rows = training_data(b.device, b.schema, synthetic)
+        classifier, cached = self.runtime.models.get_or_build("classifier", [model_fingerprint(), rows],
+                                                              lambda: Classifier.train(rows), Classifier)
+        LOG.info("switchboard classifier %s (%d training rows)", "loaded from cache" if cached else "trained",
+                 len(rows))
+        return ClassifierStage(classifier, b.resolver, self.options)
 
 
 class LLMStep(SwitchboardStep):

@@ -56,3 +56,9 @@ class StubLLM(LLMPort):
 @pytest.fixture(name="bus")
 def bus_fixture():
     return FakeBus()
+
+
+@pytest.fixture(autouse=True)
+def isolated_model_cache(tmp_path, monkeypatch):
+    """Trained models go to a per-test directory, never the real ~/.cache."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))

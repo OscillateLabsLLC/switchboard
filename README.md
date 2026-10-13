@@ -72,6 +72,7 @@ Shared settings go under `intents.switchboard`. Each step's settings go under it
 | shared | `echo_window_s` | 60 | echo compares the utterance against assistant speech this recent |
 | shared | `speech_history_s`, `speech_lines_max` | 600, 64 | how much assistant speech is kept per session |
 | shared | `record_ttl_s`, `records_max` | 30, 64 | per-utterance bookkeeping (high-risk holds, shadow settlement). Keep `record_ttl_s` above the longest pipeline round |
+| shared | `model_cache`, `model_cache_path`, `model_cache_max` | on, `$XDG_CACHE_HOME/switchboard`, 2 | reuse the trained classifier across restarts while its inputs are unchanged. Stored as plain arrays (`.npz`, no pickle), so a tampered file can't run code |
 | shared | `decision_log`, `decision_log_path` | on, `$XDG_STATE_HOME/switchboard/decisions.jsonl` | JSONL of every verdict and OVOS's actual outcome. Holds household speech; stays local |
 | echo | `echo_run_min` | 4 | contiguous words shared with recent assistant speech |
 | classifier | `threshold` | 0.5 | confidence needed to dispatch |
@@ -84,6 +85,8 @@ Shared settings go under `intents.switchboard`. Each step's settings go under it
 | llm | `gate`, `shortlist_k` | 0.9, 12 | addressee threshold; skill tools offered per utterance |
 
 ovos-core abandons any matcher that runs past `intents.<pipeline id>.match_timeout` (default 10 s) and treats it as no match. Keep `2 × timeout_s` under that value, or a slow LLM falls through to common_qa instead of declining.
+
+OVOS sessions carry their own copy of the pipeline. After changing `intents.pipeline`, restart the listener (and any other client that holds a default session) as well as ovos-core. Otherwise spoken utterances keep using the old pipeline, and the Switchboard steps never run.
 
 Every installed step is instantiated by ovos-core even when it isn't in the pipeline. To switch one off entirely, add its id to `intents.blacklisted_pipelines`.
 
@@ -144,7 +147,7 @@ ovos_switchboard/
   data/       intents.yaml schema, reviewed synthetic examples, the measured prompts
 ```
 
-Each step asks the runtime to build only its own stage, so installing the exact step alone trains no classifier. All stages rebuild from the live INTENT-4 registrations in the background when skills register or deregister.
+Each step asks the runtime to build only its own stage, so installing the exact step alone trains no classifier. Stages build once ovos-core reports its skills loaded, cheapest first: on a Mac with 147 intents the exact and LLM stages are ready within about 2 s, and the classifier loads from the model cache in under 2 s (about 20 s when it has to retrain). All stages rebuild from the live INTENT-4 registrations in the background when skills register or deregister.
 
 ## Development
 
