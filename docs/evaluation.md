@@ -36,7 +36,7 @@ The README's earlier 90.6% Hub figure used the opt-in `always` decline policy. T
 - **It stays quiet when speech isn't for it.**
   - Replaying the Hub's history, it acted on 7 of 71 real overheard utterances; Neon had acted on all 71. That
     replay used `always` routing, the less cautious policy.
-  - On the 600 external sentences, an earlier build of the stages without the LLM acted on 1.3%.
+  - On 600 external overheard sentences (meetings, idioms, dialogue), treated as false wakes, the default configuration acted on 2.7%. Without the LLM it was 1.8%; with the opt-in `always` policy, 13.8%.
 - **Paraphrases are handled.** On real Hub traffic, Switchboard doubles stock's accuracy. Without any LLM it still reaches 76.6%, so the classifier carries most of that gain; the LLM adds the rest.
 - **No skill changes are needed.** LLM tools come from what skills already register. Dispatches carry the skill's own slot names.
 - **Rich-template languages work well.** On template hold-outs, Galician and Catalan both score 93.9% right, compared with 83.0% for English.
@@ -49,8 +49,8 @@ The README's earlier 90.6% Hub figure used the opt-in `always` decline policy. T
   - On the Hub, Neon's launcher template `open {program}` takes "open the garage", "open the blinds" and "open the weather" through the exact layer. Nothing high-risk runs, but the user gets the wrong skill.
   - OVOS's launcher keeps such phrases out with a runtime blacklist. Switchboard can't see that blacklist.
 - **Unlisted paraphrases near a catch-all.** "Start counting to ten" goes to the launcher if the count skill doesn't list that phrasing.
-- **Questions between people.** "Do you think you studied enough?" is phrased to "you", and text alone can't tell who "you" is. Under always-routing, the LLM accepted 14.3% of the external sentences, mostly questions like this.
-  - The default `active` policy sends that kind of row to the LLM only within 120 s of the assistant speaking. The estimate for the default is about 2.5%, but it hasn't been run directly on that slice.
+- **Questions between people.** "Do you think you studied enough?" is phrased to "you", and text alone can't tell who "you" is. Under `always` routing, 59 of the 83 external sentences acted on were questions like this sent to `ask_knowledge`.
+  - The default `active` policy sends that kind of row to the LLM only within 120 s of the assistant speaking, so cold overheard questions mostly stay out (5 LLM accepts of 600). Within that window, the problem remains.
 - **Thin-template languages.** French skills declare 14 template lines per intent, against 58 for English and 125 for Galician. French passes 23% of hold-out phrases. It isn't wrong more often; it just covers less.
 - **In Galician, the decline class can outrank real requests.** Five of the 7 missed Galician requests had "not for me" on top, three with the right intent second. Why is not yet measured.
 - **Memory at scale.**
@@ -92,6 +92,11 @@ Peak memory is the experiment process, which builds two stacks: an upper bound, 
     It's also twice as slow (route p50 1,978 ms), and on LM Studio it wasn't repeatable: about 5% of its LLM decisions
     changed between two runs at temperature 0. The 1.7B reproduced every decision.
   - Qwen3.6-35B-A3B scored level with the 14B within noise. At 20.5 GB it doesn't fit beside the OVOS stack on a 36 GB Mac: the run swapped.
+- **No GPU: don't run the LLM on CPU.** The route prompt is about 1,750 tokens (each skill tool about 100). On the M3 Max's
+  plain CPU cores, Qwen3-1.7B (Q8_0 GGUF) reads prompts at about 224 tokens/s, so about 8 s per route call (5 s with 6 tools).
+  A typical mini PC would be several times slower (estimate). Without a GPU, use the no-LLM configuration.
+- **The small-model numbers are MLX builds** (8-bit 1.7B, 4-bit 4B) on Apple's GPU. GGUF builds of the same models on other
+  hardware weren't checked for identical answers.
 - **Servers without logprobs (LM Studio).** The addressee gate reads a plain yes/no, so it's binary rather than calibrated. Servers that don't enforce tool choice let small models invent tool names; Switchboard declines those (`unknown_tool`).
 - **Languages.**
   - Set `lang`. Every language needs its skills' own templates, and the decline class trains on that language's `.dialog` lines.
@@ -109,4 +114,3 @@ Peak memory is the experiment process, which builds two stacks: an upper bound, 
 - Native-speaker evaluation data for any language except English.
 - A second household's traffic.
 - Training memory with float32 or a different solver.
-- The `active` policy directly on the external overheard slice.
