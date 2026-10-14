@@ -12,7 +12,7 @@ import re
 import string
 from dataclasses import dataclass, field
 
-from ovos_switchboard.core.templates import MAX_PER_LINE, SLOT, clean, compiles, expand, expansions, template_regex
+from ovos_switchboard.core.templates import MAX_PER_LINE, SLOT, clean, expand, expansions, template_regex, well_formed
 
 
 MAX_KEYWORD_EXAMPLES = 40
@@ -52,7 +52,7 @@ class Device:
             for d in defs if isinstance(defs, list) else []:
                 if d["lang"].lower() == self.lang and d["method"] == "template":
                     for line in d["definition"].get("samples") or []:
-                        if compiles(line):
+                        if well_formed(line):
                             yield f"{skill_id}:{d['intent_name']}", line
 
     @classmethod
@@ -81,8 +81,8 @@ def derive_examples(definitions, lang):
                 continue
             label = f"{skill_id}:{d['intent_name']}"
             if d["method"] == "template":
-                rows = [(ex, sorted(set(SLOT.findall(ex))))
-                        for line in d["definition"].get("samples") or [] if compiles(line) for ex in expansions(line)]
+                lines = [line for line in d["definition"].get("samples") or [] if well_formed(line)]
+                rows = [(ex, sorted(set(SLOT.findall(ex)))) for line in lines for ex in expansions(line)]
             else:
                 rows = [(ex, []) for ex in d["definition"].get("keyword_examples") or []]
             for ex, slots in rows:

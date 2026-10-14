@@ -111,9 +111,19 @@ def is_catch_all(line):
 
 
 def compiles(line):
-    """Whether the template's named-group regex compiles."""
+    """Whether the template's named-group regex compiles (slot extraction). Typed slots ({number:priority}) fail
+    here, since ':' can't be in a group name, but still match: see well_formed."""
     try:
         re.compile(named_template_regex(line))
+        return True
+    except (ValueError, re.error):
+        return False
+
+
+def well_formed(line):
+    """Whether the template's matching regex compiles: false only for broken syntax such as an unclosed group."""
+    try:
+        template_regex(line)
         return True
     except (ValueError, re.error):
         return False

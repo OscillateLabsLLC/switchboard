@@ -35,9 +35,12 @@ def test_a_malformed_template_cannot_stop_the_exact_layer_building():
     from ovos_switchboard.core.schema import Schema
 
     defs = {"news.test": [{"skill_id": "news.test", "intent_name": "news", "lang": "en-us", "method": "template",
-                           "definition": {"samples": ["play the (news|headlines", "read me the news"]}}]}
+                           "definition": {"samples": ["play the (news|headlines", "read me the news",
+                                                      "read me {number:count} headlines"]}}]}
     device = Device.from_definitions(defs, "en-us")
     layer = ExactLayer(device, Schema.load())
     assert layer.route("read me the news") == "__unmapped__:news.test:news"
-    assert [line for _, line in device.template_entries()] == ["read me the news"]
-    assert all("headlines" not in e["example"] for e in device.examples), "no training rows from the broken line"
+    # a typed slot ({number:count}) is not malformed: it still claims its phrases
+    assert layer.route("read me five headlines") == "__unmapped__:news.test:news"
+    assert [line for _, line in device.template_entries()] == ["read me the news", "read me {number:count} headlines"]
+    assert all(not e["example"].startswith("play the") for e in device.examples), "no rows from the broken line"
