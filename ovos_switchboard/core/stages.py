@@ -101,7 +101,9 @@ class ClassifierStage:
             if self._pass_onward(context):
                 return passed(self.name, "decline class, assistant active", details=details)
             return declined(self.name, "decline_class", details=details)
-        if top.startswith(UNMAPPED) or conf < self.options.threshold:
+        if top.startswith(UNMAPPED):
+            return passed(self.name, "unmapped intent", details=details)
+        if conf < self.options.threshold:
             return passed(self.name, "low confidence", details=details)
         return resolved(self.name, top, utterance, self.resolver, **details)
 
