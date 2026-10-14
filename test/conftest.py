@@ -38,15 +38,15 @@ def register_all(bus):
 class StubLLM(LLMPort):
     """Stands in for LLMClient: scripted tool choice and gate probability."""
 
-    def __init__(self, tool="ignore", args=None, p_yes=0.99, fail=False):
+    def __init__(self, tool="ignore", args=None, p_yes=0.99, fail=False, invented=False):
         self.tool, self.args, self.p_yes, self.fail = tool, args or {}, p_yes, fail
-        self.calls = 0
+        self.invented, self.calls = invented, 0  # invented: answer with a tool that wasn't offered
 
     def route(self, utterance, tools):
         self.calls += 1
         if self.fail:
             raise LLMUnavailable("stub endpoint down")
-        assert self.tool in {t["function"]["name"] for t in tools}, f"{self.tool} not shortlisted"
+        assert self.invented or self.tool in {t["function"]["name"] for t in tools}, f"{self.tool} not shortlisted"
         return {"tool": self.tool, "args": self.args, "ms": 1.0}
 
     def p_addressed(self, utterance):

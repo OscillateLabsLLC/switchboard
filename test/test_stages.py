@@ -108,6 +108,7 @@ def test_llm_keyword_tool_gets_vocab_match_data(parts):
     (StubLLM("homeassistant__turn_off", p_yes=0.2), Outcome.DECLINE, "addressee_gate"),
     (StubLLM("ignore"), Outcome.DECLINE, "ignore"),
     (StubLLM(fail=True), Outcome.DECLINE, "llm_unavailable"),
+    (StubLLM("easter_eggs_joke", {"query": "algo"}, invented=True), Outcome.DECLINE, "unknown_tool"),
     (StubLLM("ask_knowledge", {"question": "why is the sky blue"}), Outcome.PASS, "llm chose ask_knowledge"),
 ])
 def test_llm_outcomes(parts, llm, outcome, reason):
