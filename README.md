@@ -2,7 +2,7 @@
 
 Intent routing for OVOS as a set of pipeline steps. It tries deterministic exact matches first, then a small classifier, then an LLM with tools derived from the skills' own registrations. When speech wasn't meant for the assistant, it stays silent.
 
-Each stage was measured before it was adopted, on the [intent-eval](https://forgejo.graywind.org/graywind/intent-eval) harness, using real household traffic from a Neon Hub and an OVOS Mac. On held-out Hub traffic, Switchboard answered 84.4% of requests correctly with its default settings, versus 42.2% for stock OVOS. Replaying the Hub's history, it acted on 7 of 71 overheard utterances where Neon acted on all 71. [docs/evaluation.md](docs/evaluation.md) covers what it does well and badly, other languages, scale, and which configuration to use with or without an LLM. `scripts/check_harness.py` shows that this package's stages reproduce the harness's measured decisions exactly.
+Each stage was measured before it was adopted, on a separate evaluation harness, using real traffic from a Neon smart speaker and an OVOS desktop. On held-out smart-speaker traffic, Switchboard answered 84.4% of requests correctly with its default settings, versus 42.2% for stock OVOS. On 71 real overheard utterances, it acted on 7 where Neon acted on all 71. [docs/evaluation.md](docs/evaluation.md) covers what it does well and badly, other languages, scale, and which configuration to use with or without an LLM. `scripts/check_harness.py` shows that this package's stages reproduce the harness's measured decisions exactly.
 
 ## The steps
 
@@ -31,7 +31,7 @@ A "not for me" utterance that was passed on and then finds no LLM tool (`unsuppo
 
 ## Pipeline order (recommended)
 
-The Switchboard steps are in the order the harness measured. The harness does not model OCP; its placement after the classifier, and the blacklist, come from the live Mac trial of 2026-10-13.
+The Switchboard steps are in the order the harness measured. The harness does not model OCP; its placement after the classifier, and the blacklist, come from a live trial on the desktop.
 
 ```json
 "intents": {
@@ -56,14 +56,14 @@ The Switchboard steps are in the order the harness measured. The harness does no
 
 - The **echo step comes first** so the assistant's own voice can't trigger stop or converse.
 - **OCP comes after the classifier.** Switchboard hands OCP's own intents (`ocp:play`, ...) to OCP's step, which adds the match data its handlers need (`delegate_skills`). Placed before the classifier, OCP would also grab catch-all phrases the exact step yields: live, "play something like glados" played music instead of the easter egg.
-- **Stock matchers Switchboard replaces are blacklisted**, so ovos-core never loads or trains them. Listed or not, ovos-core loads every installed pipeline plugin; on the reference Mac this cut a restart from about 51 s to about 30 s. A stock matcher left in the pipeline after Switchboard gets everything Switchboard passes on, which is how overheard speech leaked to m2v in the first active trial.
+- **Stock matchers Switchboard replaces are blacklisted**, so ovos-core never loads or trains them. Listed or not, ovos-core loads every installed pipeline plugin; on the reference desktop this cut a restart from about 51 s to about 30 s. A stock matcher left in the pipeline after Switchboard gets everything Switchboard passes on, which is how overheard speech leaked to m2v in the first active trial.
 - The **LLM step runs before common_qa**. If common_qa ran first, it would answer overheard questions before the addressee gate could decline them. Questions the LLM recognizes as addressed to the assistant (`ask_knowledge`) pass through to common_qa.
 - The **prefix step is optional** and not part of the measured order. It fixed 2 real trailing-speech rows on the harness with no losses, but those rows motivated it, so it still needs prospective validation. If you use it, place it between the classifier and LLM steps.
 - **Using a subset is supported.** For example, the exact step alone makes a deterministic replacement for Padatious-high. Results then differ from the measured numbers above. Without an LLM step, set the classifier's `route_decline_class` to `never`, so "not for me" rows decline instead of reaching common_qa.
 
 ## Readiness
 
-Switchboard builds its stages once all skills have registered, so by default OVOS can announce "I am ready" before Switchboard is (8 s early on the reference Mac). Switchboard answers OVOS's readiness query `mycroft.switchboard.is_ready` once every stage is built. To make the announcement wait for it, add `"switchboard"` to the boot-finished skill's `ready_settings` (`~/.config/mycroft/skills/ovos-skill-boot-finished.openvoiceos/settings.json`):
+Switchboard builds its stages once all skills have registered, so by default OVOS can announce "I am ready" before Switchboard is (8 s early on the reference desktop). Switchboard answers OVOS's readiness query `mycroft.switchboard.is_ready` once every stage is built. To make the announcement wait for it, add `"switchboard"` to the boot-finished skill's `ready_settings` (`~/.config/mycroft/skills/ovos-skill-boot-finished.openvoiceos/settings.json`):
 
 ```json
 {"ready_settings": ["skills", "switchboard"]}
@@ -134,14 +134,14 @@ Switchboard started as a question about how commercial assistants did intent rou
 
 ### What testing inside OVOS changed
 
-The original plan was seven stages, including a shared sentence encoder, GLiNER slot filling and a trained reranker. Each stage had to beat stock OVOS on the [intent-eval](https://forgejo.graywind.org/graywind/intent-eval) harness before the next one started:
+The original plan was seven stages, including a shared sentence encoder, GLiNER slot filling and a trained reranker. Each stage had to beat stock OVOS on the evaluation harness before the next one started:
 
 - **No sentence encoder.** bge-small and a character n-gram TF-IDF classifier tied (p = 1.0). OVOS's own Model2Vec model lost with the same classifier head (p = 0.008). The char n-gram model won on cost: it's CPU-only and needs no model download. Mini PC latency hasn't been measured yet.
 - **Exact matching has to come first.** A classifier alone scored 76% on phrases skills declare verbatim; exact-first scored 98.9%. When templates from two intents collide, the phrase goes to the classifier rather than being guessed.
 - **Knowing when not to act became its own stage.** After the first two layers, false accepts were the main gap: 71.4%, against stock's 100%. No open "device-directed speech" dataset exists; Amazon's and Apple's corpora are proprietary. So the decline class trains on the assistant's own `.dialog` lines, the sentences its microphone is most likely to pick back up.
-- **The shortlist is mandatory, not an optimization.** All 149 tools on the Mac came to about 12.1k prompt tokens, over the local model's 12,288-token context.
+- **The shortlist is mandatory, not an optimization.** All 149 tools on the desktop came to about 12.1k prompt tokens, over the local model's 12,288-token context.
 - **The addressee gate** reads P(yes) from first-token logprobs, a local stand-in for calibrated cloud addressee models.
-- **Context rules came from real Hub logs.** Speech was addressed to the assistant 87% of the time when it had spoken in the last 30 s, and 49% of the time otherwise. That led to the `active` decline policy (pass to the LLM only within 120 s). Requests almost never repeat four or more contiguous words of the assistant's speech (0 of 100), but self-echo does; that became the echo rule.
+- **Context rules came from real smart-speaker logs.** Speech was addressed to the assistant 87% of the time when it had spoken in the last 30 s, and 49% of the time otherwise. That led to the `active` decline policy (pass to the LLM only within 120 s). Requests almost never repeat four or more contiguous words of the assistant's speech (0 of 100), but self-echo does; that became the echo rule.
 - **Rejected after measurement:**
   - A `clarify` tool: on overheard speech it interrupted 86 times and recovered 0, because the fragments that confuse the LLM are the same ones that mark speech as overheard.
   - Giving the LLM conversation context: it doubled actions on overheard speech, from 7 to 14 of 71.
@@ -172,7 +172,7 @@ ovos_switchboard/
   data/       intents.yaml schema, reviewed synthetic examples, the measured prompts
 ```
 
-Each step asks the runtime to build only its own stage, so installing the exact step alone trains no classifier. Stages build once ovos-core reports its skills loaded, cheapest first: on a Mac with 147 intents the exact and LLM stages are ready within about 2 s, and the classifier loads from the model cache in under 2 s (about 20 s when it has to retrain). All stages rebuild from the live INTENT-4 registrations in the background when skills register or deregister.
+Each step asks the runtime to build only its own stage, so installing the exact step alone trains no classifier. Stages build once ovos-core reports its skills loaded, cheapest first: on a desktop with 147 intents the exact and LLM stages are ready within about 2 s, and the classifier loads from the model cache in under 2 s (about 20 s when it has to retrain). All stages rebuild from the live INTENT-4 registrations in the background when skills register or deregister.
 
 ## Development
 
