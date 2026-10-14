@@ -125,6 +125,25 @@ def test_ocp_verdicts_are_delegated_to_ocps_own_step(runtime, tmp_path):
     assert rows == [("exact", "delegate")], "the classifier never re-decided the delegated utterance"
 
 
+def test_first_build_skips_the_debounce_and_answers_readiness(bus, tmp_path):
+    """Live: "I am ready" came 8 s before Switchboard was; 5 s of it was the debounce after skills had loaded."""
+    rt = SwitchboardRuntime(bus, Settings(mode="active", retrain_debounce_s=3600, bus_timeout_s=0.1,
+                                          decision_log_path=str(tmp_path / "decisions.jsonl")),
+                            dialog_lines=lambda lang: DIALOG_LINES, start=False)
+    register_all(bus)
+    ExactStep(bus, {}, runtime=rt)
+    replies = []
+    bus.on("mycroft.switchboard.is_ready.response", lambda m: replies.append(m.data["status"]))
+    bus.emit(Message("mycroft.switchboard.is_ready"))
+    rt._skills_loaded()  # pylint: disable=protected-access
+    deadline = time.monotonic() + 10
+    while not rt.ready() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    bus.emit(Message("mycroft.switchboard.is_ready"))
+    rt.shutdown()
+    assert replies == [False, True], "built well inside the 3600 s debounce, and only then ready"
+
+
 def test_llm_step_dispatches_declines_and_passes(runtime):
     llm = LLMStep(runtime.bus, LLM_CONFIG, runtime=runtime)
     runtime.rebuild()

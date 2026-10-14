@@ -38,6 +38,7 @@ SPEAK_TOPICS = ("speak", "ovos.utterance.speak")
 OUTCOME_TOPICS = ("ovos.intent.matched", "ovos.intent.unmatched", "complete_intent_failure")
 SKILLS_INITIALIZED = "mycroft.skills.initialized"
 SKILLS_IS_READY = "mycroft.skills.is_ready"
+SWITCHBOARD_IS_READY = "mycroft.switchboard.is_ready"  # add "switchboard" to boot-finished's ready_settings
 
 
 @dataclass(frozen=True)
@@ -150,6 +151,7 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
         for topic in OUTCOME_TOPICS:
             bus.on(topic, self._on_outcome)
         bus.on(SKILLS_INITIALIZED, self._on_skills_initialized)
+        bus.on(SWITCHBOARD_IS_READY, self._on_is_ready)
         if start:
             threading.Thread(target=self._startup, daemon=True, name="switchboard-startup").start()
 
@@ -164,6 +166,7 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
         for topic in OUTCOME_TOPICS:
             self.bus.remove(topic, self._on_outcome)
         self.bus.remove(SKILLS_INITIALIZED, self._on_skills_initialized)
+        self.bus.remove(SWITCHBOARD_IS_READY, self._on_is_ready)
 
     # ---- stages ----
 
@@ -177,14 +180,15 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
         """The built stage `name`, or None until its first build."""
         return self.stages.get(name)
 
-    def schedule(self):
-        """Rebuild once registrations have been quiet for retrain_debounce_s, and skills have finished loading."""
+    def schedule(self, delay=None):
+        """Rebuild once registrations have been quiet for `delay` (default retrain_debounce_s), and skills have
+        finished loading."""
         if not self.skills_ready.is_set():
             return
         with self.timer_lock:
             if self.timer:
                 self.timer.cancel()
-            self.timer = threading.Timer(self.settings.retrain_debounce_s, self.rebuild)
+            self.timer = threading.Timer(self.settings.retrain_debounce_s if delay is None else delay, self.rebuild)
             self.timer.daemon = True
             self.timer.start()
 
@@ -254,8 +258,17 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
         if self.skills_ready.is_set():
             return
         self.skills_ready.set()
-        self.schedule()
+        # Everything has registered by now, so the debounce would only make "I am ready" wait longer.
+        self.schedule(delay=0)
         self._check_hangup()
+
+    def ready(self):
+        """Whether every provided stage has been built at least once."""
+        return self.skills_ready.is_set() and bool(self.builders) and set(self.builders) <= set(self.stages)
+
+    def _on_is_ready(self, message):
+        # OVOS readiness protocol: ovos-skill-boot-finished asks each name in its ready_settings.
+        self.bus.emit(message.response({"status": self.ready()}))
 
     def _check_hangup(self):
         from ovos_bus_client.message import Message
