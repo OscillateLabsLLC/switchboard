@@ -1,6 +1,6 @@
 # Design: confirming high-risk actions
 
-Status: proposal for review. Nothing here is built.
+Status: for review. Nothing here is built. The questions raised in the first draft are answered under Decided.
 
 ## Today
 
@@ -35,7 +35,7 @@ High-risk intents (unlock, open covers, shutdown, clear data; `risk: high` in th
    - the held action is kept only in memory, only for that one question, and is dropped on timeout;
    - a "yes" outside the question window is just an ordinary utterance and goes through the normal pipeline, where "yes" alone dispatches nothing;
    - Switchboard's echo guard already keeps the assistant's own question from answering itself.
-6. **Config:** `high_risk` gains `"confirm"`. `"defer"` (silent hold) stays available; `"allow"` stays for testing. Proposed default: `"confirm"` once it's been tried live.
+6. **Config:** `high_risk` gains `"confirm"`. `"defer"` (silent hold) stays available; `"allow"` stays for testing. Default: `"confirm"` once it's been tried live.
 
 ## How it would be tested
 
@@ -43,9 +43,9 @@ High-risk intents (unlock, open covers, shutdown, clear data; `risk: high` in th
 - **Live, without ever saying a real high-risk phrase** (standing rule): a stand-in intent marked `risk: high` in a test schema. For example, a harmless intent such as a timer, temporarily treated as high-risk on the test Mac, then the full spoken round trip.
 - **The harness** scores routing, not conversations. Its numbers don't change: a held row is still "not executed".
 
-## Open questions
+## Decided
 
-1. **Skill name and repo.** A new OscillateLabsLLC skill, like Hangup, or bundled into the Hangup repo with its own skill id?
-2. **Default.** `"confirm"` after a live trial, or keep `"defer"` as the default and make `"confirm"` opt-in?
-3. **Wording.** Quoting the user ("You said: … Should I go ahead?") vs a per-intent description ("Unlock the front door?"). Quoting needs no per-intent text and survives ASR errors honestly, because the user hears what was actually understood. A description reads more naturally but needs maintenance per intent and language.
-4. **Medium-risk intents** (e.g. `alarm.cancel` is `medium`). Leave them alone (current behaviour) or let users opt them into confirmation?
+1. **Skill name and repo:** a new OscillateLabsLLC skill in its own repo, like Hangup. The name is still open.
+2. **Default:** `"confirm"`, but only after a live trial. Until then, `"defer"` stays the default.
+3. **Wording:** quote the user ("You said: … Should I go ahead?"). Quoting needs no per-intent text and survives ASR errors honestly, because the user hears what was actually understood. A per-intent description ("Unlock the front door?") would read more naturally but needs maintenance per intent and language.
+4. **Medium-risk intents** (e.g. `alarm.cancel`): unchanged, never asked about.
