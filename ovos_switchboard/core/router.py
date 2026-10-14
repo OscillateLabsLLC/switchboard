@@ -50,7 +50,7 @@ class Router:  # pylint: disable=too-many-instance-attributes  # one attribute p
                  config=None):
         c = self.cfg = config or RouterConfig()
         self.resolver = LabelResolver(LabelSelector(device, schema), SlotExtractor(device, schema))
-        exact_layer = ExactLayer(device, schema)
+        exact_layer = ExactLayer(device, schema, options=c.exact)
         wake = wake_phrase_pattern(c.wake_phrases)
         self.prefix = None
         if c.prefix_min_literal:

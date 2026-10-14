@@ -35,12 +35,40 @@ class EchoOptions:
     echo_run_min: int = 4           # contiguous words shared with recent assistant speech
 
 
+COLLISION_PRIORITIES = ("none", "core", "user")
+
+
 @dataclass(frozen=True)
 class ExactOptions:
     """When a catch-all template match ('play {query}', 'call {contact}') gives way to the classifier."""
     # Confidence in a DIFFERENT intent (or the decline class) that overrules a catch-all match; 0 never overrules.
     # Chosen on dev, confirmed on test (intent-eval exp_guard_rules.py, 2026-10-13).
     catch_all_yield: float = 0.8
+    # Templates of 2+ intents matching: "none" lets the classifier decide (measured default); "core" / "user" let the
+    # one intent whose skills are all core (or all not core) win, if exactly one is. skill_priority, checked first,
+    # is an ordered list: the colliding intent of the earliest listed skill wins. Entries of both lists starting with
+    # "." are skill-id suffixes, the rest exact skill ids.
+    collision_priority: str = "none"
+    core_skills: tuple = (".openvoiceos", ".neongeckocom", "ocp")
+    skill_priority: tuple = ()
+
+    def __post_init__(self):
+        if self.collision_priority not in COLLISION_PRIORITIES:
+            raise ValueError(f"collision_priority must be one of {COLLISION_PRIORITIES}, "
+                             f"got {self.collision_priority!r}")
+
+    def is_core(self, skill_id):
+        """Whether a skill counts as core for collision_priority."""
+        return any(_names(entry, skill_id) for entry in self.core_skills)
+
+    def priority_rank(self, skill_id):
+        """The skill's position in skill_priority, or None when it isn't listed."""
+        return next((i for i, entry in enumerate(self.skill_priority) if _names(entry, skill_id)), None)
+
+
+def _names(entry, skill_id):
+    """Whether a skill-list entry (".suffix" or an exact id) names the skill."""
+    return skill_id.endswith(entry) if entry.startswith(".") else skill_id == entry
 
 
 @dataclass(frozen=True)
