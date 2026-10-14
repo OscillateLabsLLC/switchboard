@@ -59,6 +59,14 @@ The Switchboard steps are in the order the harness measured. The harness does no
 - The **prefix step is optional** and not part of the measured order. It fixed 2 real trailing-speech rows on the harness with no losses, but those rows motivated it, so it still needs prospective validation. If you use it, place it between the classifier and LLM steps.
 - **Using a subset is supported.** For example, the exact step alone makes a deterministic replacement for Padatious-high. Results then differ from the measured numbers above. Without an LLM step, set the classifier's `route_decline_class` to `never`, so "not for me" rows decline instead of reaching common_qa.
 
+## Readiness
+
+Switchboard builds its stages once all skills have registered, so by default OVOS can announce "I am ready" before Switchboard is (8 s early on the reference Mac). Switchboard answers OVOS's readiness query `mycroft.switchboard.is_ready` once every stage is built. To make the announcement wait for it, add `"switchboard"` to the boot-finished skill's `ready_settings` (`~/.config/mycroft/skills/ovos-skill-boot-finished.openvoiceos/settings.json`):
+
+```json
+{"ready_settings": ["skills", "switchboard"]}
+```
+
 ## Configuration
 
 Shared settings go under `intents.switchboard`. Each step's settings go under its pipeline id, and a step can override the shared `mode`.
