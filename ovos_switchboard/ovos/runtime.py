@@ -150,6 +150,7 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
         self.timer, self.timer_lock = None, threading.Lock()
         self.rebuild_lock = threading.Lock()
         self.skills_ready = threading.Event()  # rebuilding mid-load trains on a partial set, so wait for core
+        self.confirm_loaded = None  # None: unknown (trust the config); False: hold silently instead of asking
         self.registry = IntentRegistry(bus, on_change=self.schedule)
         self.registry.add_ocp_templates(settings.lang)
         for topic in SPEAK_TOPICS:
@@ -286,9 +287,10 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
         if self.settings.hangup_skill_id not in loaded:
             LOG.error("%s is not loaded: Switchboard's declines will go nowhere. Install the Hangup skill.",
                       self.settings.hangup_skill_id)
-        if self.settings.high_risk == "confirm" and self.settings.confirm_skill_id not in loaded:
-            LOG.error("%s is not loaded: high-risk requests will go unanswered. Install the Doublecheck skill.",
-                      self.settings.confirm_skill_id)
+        self.confirm_loaded = self.settings.confirm_skill_id in loaded
+        if self.settings.high_risk == "confirm" and not self.confirm_loaded:
+            LOG.error("%s is not loaded: high-risk requests will be held silently through Hangup instead of asked "
+                      "about. Install the Doublecheck skill and restart.", self.settings.confirm_skill_id)
 
     def _on_speak(self, message):
         # Doublecheck quotes the user ("I think you said: <request>"), so its words would make the user asking again

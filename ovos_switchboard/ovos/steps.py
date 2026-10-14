@@ -167,7 +167,8 @@ class SwitchboardStep(PipelinePlugin):
         turn.record.held = True
         self._log(verdict, "held", turn, ms, HELD_REASON)
         held = {"held_intent": verdict.intent, "held_label": verdict.label}
-        if self.runtime.settings.high_risk != "confirm":
+        # A dispatch to a skill that isn't loaded is silent too, but leaves ovos-core waiting out its handler timeout.
+        if self.runtime.settings.high_risk != "confirm" or self.runtime.confirm_loaded is False:
             return self._hangup(verdict, turn.utterance, HELD_REASON, held)
         skill_id = self.runtime.settings.confirm_skill_id
         return IntentHandlerMatch(match_type=f"{skill_id}:{CONFIRM_INTENT}", skill_id=skill_id,

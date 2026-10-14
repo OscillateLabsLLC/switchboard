@@ -126,26 +126,50 @@ def test_high_risk_hold_consumes_the_utterance(runtime, tmp_path):
     assert [(r["step"], r["reason"]) for r in held] == [("exact", "held_high_risk")]
 
 
-def test_confirm_hands_the_held_intent_to_doublecheck(bus, tmp_path):
-    """high_risk "confirm": Doublecheck gets what it needs to replay the dispatch; nothing later runs it."""
+@pytest.fixture(name="confirming")
+def confirming_fixture(bus, tmp_path):
     rt = SwitchboardRuntime(bus, Settings(mode="active", high_risk="confirm", retrain_debounce_s=3600,
                                           decision_log_path=str(tmp_path / "decisions.jsonl")),
                             dialog_lines=lambda lang: DIALOG_LINES, start=False)
     register_all(bus)
-    try:
-        exact, stock = ExactStep(bus, {}, runtime=rt), StockStep()
-        rt.rebuild()
-        rt.stages["exact"] = ScriptedStage(Verdict("exact", Outcome.DISPATCH, "lock.unlock", f"{HA}:unlock",
-                                                   {"entity": "front door"}, {}))
-        name, match = run_pipeline([exact, stock], "unlock the front door")
-        assert (name, match.match_type, match.skill_id) == (
-            "exact", f"{DOUBLECHECK}:confirm", "ovos-skill-doublecheck.oscillatelabsllc")
-        assert match.match_data == {"held_intent": "lock.unlock", "held_label": f"{HA}:unlock",
-                                    "held_match_data": {"entity": "front door"}}
-        assert stock.seen == []
-        assert [r["action"] for r in records(tmp_path)] == ["held"]
-    finally:
-        rt.shutdown()
+    yield rt
+    rt.shutdown()
+
+
+def hold_unlock(rt):
+    exact, stock = ExactStep(rt.bus, {}, runtime=rt), StockStep()
+    rt.rebuild()
+    rt.stages["exact"] = ScriptedStage(Verdict("exact", Outcome.DISPATCH, "lock.unlock", f"{HA}:unlock",
+                                               {"entity": "front door"}, {}))
+    name, match = run_pipeline([exact, stock], "unlock the front door")
+    assert name == "exact" and stock.seen == [], "nothing after Switchboard saw the held utterance"
+    return match
+
+
+@pytest.mark.parametrize("loaded", [True, None])  # None: ovos-core didn't say which skills are loaded
+def test_confirm_hands_the_held_intent_to_doublecheck(confirming, tmp_path, loaded):
+    """high_risk "confirm": Doublecheck gets what it needs to replay the dispatch; nothing later runs it."""
+    confirming.confirm_loaded = loaded
+    match = hold_unlock(confirming)
+    assert (match.match_type, match.skill_id) == (f"{DOUBLECHECK}:confirm", DOUBLECHECK)
+    assert match.match_data == {"held_intent": "lock.unlock", "held_label": f"{HA}:unlock",
+                                "held_match_data": {"entity": "front door"}}
+    assert [r["action"] for r in records(tmp_path)] == ["held"]
+
+
+def test_confirm_without_doublecheck_holds_silently(confirming):
+    """Live trial: a dispatch to a missing skill was silent but left ovos-core waiting out its 5-minute timeout."""
+    confirming.confirm_loaded = False
+    match = hold_unlock(confirming)
+    assert (match.match_type, match.match_data["reason"]) == (HANGUP, "held_high_risk")
+
+
+@pytest.mark.parametrize("skills, loaded", [([DOUBLECHECK], True), ([], False)])
+def test_startup_check_records_whether_doublecheck_is_loaded(confirming, skills, loaded):
+    confirming.bus.on("ovos.skills.list", lambda m: confirming.bus.emit(
+        m.response({"ok": True, "skills": [{"skill_id": s} for s in skills]})))
+    confirming._check_skills()  # pylint: disable=protected-access
+    assert confirming.confirm_loaded is loaded
 
 
 def test_unknown_high_risk_policy_is_rejected():
