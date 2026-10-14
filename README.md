@@ -30,7 +30,7 @@ A "not for me" utterance that was passed on and then finds no LLM tool (`unsuppo
 
 **High-risk intents** (unlock, open covers, shutdown, clear data) are never acted on directly. A held utterance is consumed, so neither later Switchboard steps nor the stock steps after them (Adapt, Padatious) can run it:
 - `high_risk: "defer"` (default): declined silently through Hangup, with reason `held_high_risk` and the held intent recorded.
-- `high_risk: "confirm"`: handed to the [Doublecheck](https://github.com/OscillateLabsLLC/doublecheck) skill, which repeats the request back ("I think you said: unlock the front door. Should I do that?") and runs exactly the held intent only on a clear yes. If Doublecheck isn't loaded at startup, held requests fall back to the silent Hangup hold (and an error is logged). Planned as the default once it has been tried live ([design](docs/confirm-flow.md)).
+- `high_risk: "confirm"`: handed to the [Doublecheck](https://github.com/OscillateLabsLLC/doublecheck) skill, which repeats the request back ("I think you said: unlock the front door. Should I do that?") and runs exactly the held intent only on a clear yes. If Doublecheck isn't loaded at startup, held requests fall back to the silent Hangup hold (and an error is logged). Opt-in by design: Switchboard can't guarantee Doublecheck is installed, so `defer` stays the default ([design](docs/confirm-flow.md)).
 
 ## Pipeline order (recommended)
 
@@ -72,6 +72,19 @@ Switchboard builds its stages once all skills have registered, so by default OVO
 ```json
 {"ready_settings": ["skills", "switchboard"]}
 ```
+
+## Known limitations
+
+Measured details are in [docs/evaluation.md](docs/evaluation.md).
+
+- **Catch-all templates.** A verb plus a free slot (`play {query}`, `start {application}`, Neon's `open {program}`) claims almost any speech that starts with that verb. The exact step lets a catch-all yield only when the classifier is confident of something else, and no single threshold fixes every case. "Open the weather" can still reach the launcher. Nothing high-risk runs, but the wrong skill can.
+- **No disambiguation.** Switchboard never asks "did you mean X or Y?". When two skills declare the same phrase, the classifier picks one; `collision_priority` and `skill_priority` let you settle known overlaps.
+- **Questions between people.** Text can't tell whether "do you think it'll rain?" is for the assistant. By default such questions reach the LLM only within 120 s of the assistant speaking; inside that window, some overheard questions get answered.
+- **Languages.** Only English has been measured on real traffic. French skills declare few templates, so Switchboard passes more often in French. In Galician, "not for me" sometimes outranks real requests, and the Galician test phrases haven't been reviewed by a native speaker. The LLM prompts are English.
+- **Confirming high-risk actions is opt-in, by design.** Asking first needs the [Doublecheck](https://github.com/OscillateLabsLLC/doublecheck) skill, and Switchboard can't guarantee it's installed, so the default holds high-risk requests silently. Doublecheck asks in English, Catalan and French; in other languages it holds silently too.
+- **Hangup is required.** Without it, declines go nowhere and the utterance is dropped silently.
+- **Hardware.** Measured on an Apple-silicon laptop and a 4-core mini PC (9.5 ms p95 without an LLM); not yet on a Raspberry Pi. Training peaks at about 3.4 GB with 400+ intents (once, in a child process; later starts load a cached model).
+- **One home.** The real traffic comes from one household's two devices.
 
 ## Configuration
 
