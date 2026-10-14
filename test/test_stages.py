@@ -129,6 +129,13 @@ def test_router_composes_stages_in_measured_order(parts):
     assert r.route("i turned the lamp on for you", {"gap_s": 10})["stage"] == "llm"
 
 
+def test_router_declines_an_invented_tool(parts):
+    r = Router(parts.device, parts.schema, parts.tools, synthetic=parts.synthetic,
+               llm=StubLLM("easter_eggs_joke", invented=True))
+    d = r.route("i turned the lamp on for you", {"gap_s": 10})
+    assert (d["intent"], d["stage"], d["llm_tool"]) == (None, "llm", "easter_eggs_joke")
+
+
 def test_classifier_state_round_trips_exactly(parts):
     restored = Classifier.from_state(*parts.classifier.state())
     for utterance in ("whats the time right now", "i turned the lamp on for you", "turn off the porch light"):

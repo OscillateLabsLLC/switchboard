@@ -172,12 +172,12 @@ class LLMStage:
             return declined(self.name, "llm_unavailable",
                             details={"error": str(e), "llm_ms": round((time.perf_counter() - t0) * 1000, 1)})
         tool, args = res["tool"], res["args"]
-        # servers without enforced tool choice (LM Studio, Ollama) let small models invent names
-        if tool not in {t["function"]["name"] for t in offered}:
-            return declined(self.name, "unknown_tool", details={"llm_tool": tool, "llm_ms": res["ms"] + gate["ms"]})
-        intent, slots = self._tool_intent(tool, args)
         details = {"llm_tool": tool, "tool_args": args, "p_addressed": round(gate["p_yes"], 4),
                    "llm_ms": res["ms"] + gate["ms"]}
+        # servers without enforced tool choice (LM Studio, Ollama) let small models invent names
+        if tool not in {t["function"]["name"] for t in offered}:
+            return declined(self.name, "unknown_tool", details=details)
+        intent, slots = self._tool_intent(tool, args)
         if gate["p_yes"] < self.options.gate:
             return declined(self.name, "addressee_gate", intent=intent, details=details)
         if tool == "ignore":
