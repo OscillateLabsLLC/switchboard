@@ -71,7 +71,7 @@ Stock OVOS mostly fails by doing the wrong thing. Switchboard mostly fails by do
 - **Thin-template languages.** French skills declare 14 template lines per intent, against 58 for English and 125 for Galician. French passes 23% of hold-out phrases. It isn't wrong more often; it just covers less.
 - **In Galician, the decline class can outrank real requests.** Five of the 7 missed Galician requests had "not for me" on top, three with the right intent second. Why is not yet measured.
 - **Training memory at scale.** Training runs in a short-lived child process, so afterwards ovos-core holds only the model: about 160 MB at 146 intents and 240 MB at 465. While it runs, the child peaks below 0.9 GB at 146 intents but about 3.4 GB at 465, which matters for small devices with very large skill sets.
-- **Out of scope.** Slot typing and entity resolution stay in the skills. By default high-risk intents are held silently; asking first (Doublecheck, `high_risk: "confirm"`) is opt-in until it has been tried live. There is no disambiguation ("did you mean X or Y?") yet.
+- **Out of scope.** Slot typing and entity resolution stay in the skills. By default high-risk intents are held silently. Asking first (Doublecheck, `high_risk: "confirm"`) is opt-in by design: Switchboard can't guarantee the skill is installed. There is no disambiguation ("did you mean X or Y?") yet.
 
 ## Scale: more skills mostly means more caution
 
@@ -127,4 +127,4 @@ Peak memory is the experiment process, which builds two stacks: an upper bound, 
 - Mini PC and Raspberry Pi latency and memory.
 - Native-speaker evaluation data for any language except English.
 - Traffic from more than one home.
-- Training memory with float32 or a different solver.
+- Training memory with a different solver.
