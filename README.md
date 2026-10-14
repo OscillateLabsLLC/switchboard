@@ -27,7 +27,9 @@ Steps never act on each other's verdicts. Pipeline order already means a step on
 
 **High-risk intents** (unlock, open covers, shutdown, clear data) are never acted on until a confirm flow exists (`high_risk: "defer"`). A held utterance is declined through Hangup with reason `held_high_risk` and the held intent recorded, so neither later Switchboard steps nor the stock steps after them (Adapt, Padatious) can run it. It is silent for now; asking for confirmation belongs to the confirm flow, not to Hangup.
 
-## Pipeline order (measured configuration)
+## Pipeline order (recommended)
+
+The Switchboard steps are in the order the harness measured. The harness does not model OCP; its placement after the classifier, and the blacklist, come from the live Mac trial of 2026-10-13.
 
 ```json
 "intents": {
@@ -36,16 +38,23 @@ Steps never act on each other's verdicts. Pipeline order already means a step on
     "ovos-stop-pipeline-plugin-high",
     "ovos-converse-pipeline-plugin",
     "ovos-switchboard-exact-pipeline-plugin",
-    "ovos-ocp-pipeline-plugin-high",
     "ovos-switchboard-classifier-pipeline-plugin",
+    "ovos-ocp-pipeline-plugin-high",
     "ovos-switchboard-llm-pipeline-plugin",
     "ovos-common-query-pipeline-plugin",
     "ovos-fallback-pipeline-plugin-low"
+  ],
+  "blacklisted_pipelines": [
+    "ovos-padacioso-pipeline-plugin", "ovos-padatious-pipeline-plugin", "ovos-m2v-pipeline",
+    "ovos-m2v-prototype-pipeline", "ovos-persona-pipeline-plugin", "ovos-adapt-pipeline-plugin",
+    "ovos-adapt-domain-pipeline-plugin", "ovos-adapt-hierarchical-pipeline-plugin"
   ]
 }
 ```
 
 - The **echo step comes first** so the assistant's own voice can't trigger stop or converse.
+- **OCP comes after the classifier.** Switchboard hands OCP's own intents (`ocp:play`, ...) to OCP's step, which adds the match data its handlers need (`delegate_skills`). Placed before the classifier, OCP would also grab catch-all phrases the exact step yields: live, "play something like glados" played music instead of the easter egg.
+- **Stock matchers Switchboard replaces are blacklisted**, so ovos-core never loads or trains them. Listed or not, ovos-core loads every installed pipeline plugin; on the reference Mac this cut a restart from about 51 s to about 30 s. A stock matcher left in the pipeline after Switchboard gets everything Switchboard passes on, which is how overheard speech leaked to m2v in the first active trial.
 - The **LLM step runs before common_qa**. If common_qa ran first, it would answer overheard questions before the addressee gate could decline them. Questions the LLM recognizes as addressed to the assistant (`ask_knowledge`) pass through to common_qa.
 - The **prefix step is optional** and not part of the measured order. It fixed 2 real trailing-speech rows on the harness with no losses, but those rows motivated it, so it still needs prospective validation. If you use it, place it between the classifier and LLM steps.
 - **Using a subset is supported.** For example, the exact step alone makes a deterministic replacement for Padatious-high. Results then differ from the measured numbers above. Without an LLM step, set the classifier's `route_decline_class` to `never`, so "not for me" rows decline instead of reaching common_qa.
@@ -70,6 +79,7 @@ Shared settings go under `intents.switchboard`. Each step's settings go under it
 | shared | `hangup_skill_id` | `ovos-skill-hangup.oscillatelabsllc` | where declines go |
 | shared | `high_risk` | `defer` | `defer` or `allow` |
 | shared | `retrain_debounce_s` | 5 | quiet time after registration changes before stages rebuild |
+| shared | `delegate_skills` | `["ocp"]` | skills whose own pipeline step must dispatch them; a Switchboard verdict for one passes to that step |
 | shared | `wake_phrases` | the listener's `hotwords` with `listen: true` | stripped from the start of an utterance before template matching |
 | shared | `bus_timeout_s` | 10 | each startup query to ovos-core (intent sync, skills list) |
 | shared | `echo_window_s` | 60 | echo compares the utterance against assistant speech this recent |

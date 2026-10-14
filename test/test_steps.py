@@ -112,6 +112,19 @@ def test_high_risk_hold_consumes_the_utterance(runtime, tmp_path):
     assert [(r["step"], r["reason"]) for r in held] == [("exact", "held_high_risk")]
 
 
+def test_ocp_verdicts_are_delegated_to_ocps_own_step(runtime, tmp_path):
+    """OCP's ocp:play handler needs match data only OCP's matcher adds (live trial: KeyError 'media_type')."""
+    exact, classifier = ExactStep(runtime.bus, {}, runtime=runtime), ClassifierStep(runtime.bus, {}, runtime=runtime)
+    ocp = StockStep()
+    runtime.rebuild()
+    runtime.stages["exact"] = ScriptedStage(Verdict("exact", Outcome.DISPATCH, "media.play", "ocp:play",
+                                                    {"query": "groove salad"}, {}))
+    assert run_pipeline([exact, classifier, ocp], "play groove salad") == ("stock", "stock match")
+    assert ocp.seen == ["play groove salad"]
+    rows = [(r["step"], r["action"]) for r in records(tmp_path)]
+    assert rows == [("exact", "delegate")], "the classifier never re-decided the delegated utterance"
+
+
 def test_llm_step_dispatches_declines_and_passes(runtime):
     llm = LLMStep(runtime.bus, LLM_CONFIG, runtime=runtime)
     runtime.rebuild()

@@ -96,7 +96,7 @@ class SwitchboardStep(PipelinePlugin):
             return None
         utterance, session_id = utterances[0], session_of(message)
         record = self.runtime.record(message, utterance)
-        if record.held or (self.mode == "shadow" and record.settled_by):
+        if record.held or record.delegated or (self.mode == "shadow" and record.settled_by):
             return None
         turn = Turn(utterance, session_id, lang, self.runtime.context(utterance, session_id), record)
         if self.mode == "shadow":
@@ -134,9 +134,15 @@ class SwitchboardStep(PipelinePlugin):
             self._log(verdict, "held", turn, ms, HELD_REASON)
             return self._hangup(verdict, turn.utterance, HELD_REASON,
                                 {"held_intent": verdict.intent, "held_label": verdict.label})
+        skill_id = verdict.label.split(":", 1)[0]
+        if skill_id in self.runtime.settings.delegate_skills:
+            # Its own pipeline step (ocp-high, placed after the classifier) re-matches it with the data it needs.
+            turn.record.delegated = True
+            self._log(verdict, "delegate", turn, ms, f"delegated to {skill_id}'s own pipeline step")
+            return None
         self._log(verdict, "dispatch", turn, ms)
         return IntentHandlerMatch(match_type=verdict.label, match_data=dict(verdict.match_data),
-                                  skill_id=verdict.label.split(":", 1)[0], utterance=turn.utterance)
+                                  skill_id=skill_id, utterance=turn.utterance)
 
     def _hangup(self, verdict, utterance, reason=None, extra=None):  # pylint: disable=R0913
         skill_id = self.runtime.settings.hangup_skill_id
