@@ -52,7 +52,7 @@ Stock OVOS mostly fails by doing the wrong thing. Switchboard mostly fails by do
 - **Declared phrases route deterministically.** Exact matching runs first and never guesses between colliding templates.
 - **It stays quiet when speech isn't for it.**
   - On 71 real overheard utterances, it acted on 7; Neon's own matching had acted on all 71 (measured with `always` routing, the less cautious policy).
-  - On the 600 public sentences, treated as false wakes, the default configuration acted on 2.7%. Without the LLM it was 1.8%; with the opt-in `always` policy, 13.8%.
+  - On the 600 public sentences, treated as false wakes, the default configuration acted on 2.5%. Without the LLM it was 1.8%; with the opt-in `always` policy, 13.8%.
 - **Paraphrases are handled.** On real speaker traffic, Switchboard doubles stock's accuracy. Without any LLM it still reaches 76.6%, so the classifier carries most of that gain; the LLM adds the rest.
 - **No skill changes are needed.** LLM tools come from what skills already register. Dispatches carry the skill's own slot names.
 - **Rich-template languages work well.** On template hold-outs, Galician and Catalan both score 93.9% right, compared with 83.0% for English.
@@ -66,12 +66,10 @@ Stock OVOS mostly fails by doing the wrong thing. Switchboard mostly fails by do
   - OVOS's launcher keeps such phrases out with a runtime blacklist. Switchboard can't see that blacklist.
 - **Unlisted paraphrases near a catch-all.** "Start counting to ten" goes to the launcher if the count skill doesn't list that phrasing.
 - **Questions between people.** "Do you think you studied enough?" is phrased to "you", and text alone can't tell who "you" is. Under `always` routing, 59 of the 83 public sentences acted on were questions like this sent to `ask_knowledge`.
-  - The default `active` policy sends that kind of row to the LLM only within 120 s of the assistant speaking, so cold overheard questions mostly stay out (5 LLM accepts of 600). Within that window, the problem remains.
+  - The default `active` policy sends that kind of row to the LLM only within 120 s of the assistant speaking, so cold overheard questions mostly stay out (4 LLM accepts of 600). Within that window, the problem remains.
 - **Thin-template languages.** French skills declare 14 template lines per intent, against 58 for English and 125 for Galician. French passes 23% of hold-out phrases. It isn't wrong more often; it just covers less.
 - **In Galician, the decline class can outrank real requests.** Five of the 7 missed Galician requests had "not for me" on top, three with the right intent second. Why is not yet measured.
-- **Memory at scale.**
-  - At 465 intents, training holds 3.5 GB in process. The trained model itself is 207 MB once loaded from cache.
-  - Training in a child process is planned before Switchboard is recommended to OVOS users.
+- **Training memory at scale.** Training runs in a short-lived child process, so afterwards ovos-core holds only the model: about 160 MB at 146 intents and 240 MB at 465. While it runs, the child peaks below 0.9 GB at 146 intents but about 3.4 GB at 465, which matters for small devices with very large skill sets.
 - **Out of scope.** Slot typing and entity resolution stay in the skills. There is no confirm flow yet: high-risk intents are held silently. There is no disambiguation ("did you mean X or Y?") yet.
 
 ## Scale: more skills mostly means more caution
@@ -80,14 +78,15 @@ These numbers are from template hold-outs with no LLM: every fifth template line
 
 | skills installed | intents | right | wrong | passed | train time | peak memory |
 |---|---|---|---|---|---|---|
-| a typical desktop install (31 skills) | 146 | 83.0% | 8.6% | 8.4% | 10 s | 0.9 GB |
-| + the OpenVoiceOS org's skills | 222 | 80.7% | 8.8% | 10.5% | 21 s | 1.6 GB |
-| + OVOSHatchery | 459 | 72.9% | 13.4% | 13.7% | 59 s | 3.9 GB |
-| + further third-party skills | 465 | 69.0% | 17.5% | 13.5% | 57 s | 4.2 GB |
+| a typical desktop install (31 skills) | 146 | 82.9% | 8.7% | 8.4% | 8 s | 0.8 GB |
+| + the OpenVoiceOS org's skills | 222 | 81.0% | 8.8% | 10.2% | 14 s | 1.4 GB |
+| + OVOSHatchery | 459 | 68.8% | 17.5% | 13.7% | 46 s | 3.3 GB |
+| + further third-party skills | 465 | 68.9% | 17.4% | 13.7% | 40 s | 3.3 GB |
 
 Peak memory is the experiment process, which builds two stacks: an upper bound, not a device's steady state.
 
 - **Most wrong answers come from one catch-all.** At every size, the largest single source of wrong answers is the OVOS launcher's `(launch|start|open|run) {application}` catching the count skill's lines. Leave those out and wrong answers stay at 2.9–4.0% at every size.
+- **That template sits on a knife edge.** Whether it steps aside depends on the classifier clearing 0.8 for another intent, and at 459 intents about 90 of these rows sit right at that line: switching the classifier from float64 to float32, which changed nothing else measurable, moved them (wrong 13.4% → 17.5% at 459 intents).
 - **This test overstates catch-all harm.** It removes the victim's own template. With every template installed, the two would collide and the classifier would decide. None of the real-traffic rows is a launcher misroute.
 - **Real scale effects:**
   - Passes grow (8.4% → 13.7%): more classes dilute confidence, so the assistant declines rather than guesses.
@@ -120,7 +119,7 @@ Peak memory is the experiment process, which builds two stacks: an upper bound, 
   - `always`: higher accuracy (speaker 90.6%) but acts on more overheard speech. An option for users who tolerate that, not a default.
 - **Many skills (400+).**
   - Expect more passes, not many more wrong answers, except around catch-all templates.
-  - Budget about 4 GB for the first training. Later starts load the cached model.
+  - Budget about 3.4 GB, briefly, for the first training (it runs in a child process). Later starts load the cached model.
 
 ## Not yet measured
 
