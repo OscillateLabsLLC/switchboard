@@ -7,7 +7,7 @@ from ovos_bus_client.message import Message
 from conftest import DIALOG_LINES, HA, StubLLM, register_all
 from ovos_switchboard.core.verdict import Outcome, Verdict
 from ovos_switchboard.ovos.runtime import Settings, SwitchboardRuntime
-from ovos_switchboard.ovos.steps import ClassifierStep, EchoStep, ExactStep, LLMStep, PrefixStep
+from ovos_switchboard.ovos.steps import ClassifierStep, DeciderStep, EchoStep, ExactStep, LLMStep, PrefixStep
 
 
 HANGUP = "ovos-skill-hangup.oscillatelabsllc:decline"
@@ -187,6 +187,28 @@ def test_llm_step_without_url_is_inert(runtime):
     runtime.rebuild()
     assert "llm" not in runtime.stages
     assert run_pipeline([llm], "kill the fan") == (None, None)
+
+
+def test_decider_step_without_its_extra_is_inert(runtime, monkeypatch):
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: None)
+    decider = DeciderStep(runtime.bus, {}, runtime=runtime)
+    runtime.rebuild()
+    assert "decider" not in runtime.stages
+    assert run_pipeline([decider], "kill the fan") == (None, None)
+
+
+def test_decider_step_dispatches_and_declines(runtime, monkeypatch):
+    from test_decider import StubDecider
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: True)  # the "decider" extra, simulated
+    monkeypatch.setattr("ovos_switchboard.adapters.decider_model.TasksourceDecider",
+                        lambda spec: StubDecider("homeassistant__turn_off"))
+    decider = DeciderStep(runtime.bus, {}, runtime=runtime)
+    runtime.rebuild()
+    assert run_pipeline([decider], "turn off the fan")[1].match_type == f"{HA}:turn.off"
+    runtime.stage("decider").decider = StubDecider("ignore")
+    match = run_pipeline([decider], "pass me the salt")[1]
+    assert match.skill_id == "ovos-skill-hangup.oscillatelabsllc"
+    assert match.match_data["reason"] == "decider: none of these"
 
 
 def test_shadow_mode_never_matches_and_later_steps_skip_settled_utterances(bus, tmp_path):

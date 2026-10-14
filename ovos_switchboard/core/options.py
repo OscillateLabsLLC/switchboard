@@ -68,3 +68,18 @@ class LLMOptions:
     """The addressee gate and the tool shortlist size."""
     gate: float = 0.9               # P(addressed) needed to act
     shortlist_k: int = 12           # skill tools offered per utterance
+
+
+UNSURE_POLICIES = ("decline", "pass")
+
+
+@dataclass(frozen=True)
+class DeciderOptions:
+    """When the decision model acts. Measured on the intent-eval harness (exp_decider.py, plain framing)."""
+    threshold: float = 0.7          # the top option's probability needed to act
+    shortlist_k: int = 12           # skill tools offered per utterance, as for the LLM
+    on_unsure: str = "decline"      # "none of these" or below threshold: decline (measured) or pass to a later step
+
+    def __post_init__(self):
+        if self.on_unsure not in UNSURE_POLICIES:
+            raise ValueError(f"on_unsure must be one of {UNSURE_POLICIES}, got {self.on_unsure!r}")

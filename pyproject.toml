@@ -42,6 +42,13 @@ dev = [
     "pylint>=3.0.0",
     "ruff",
 ]
+# The decider step's local typed-decision model (ovos-switchboard-decider-pipeline-plugin).
+decider = [
+    "torch",
+    "transformers>=4.48",  # ModernBERT-family encoders
+    "safetensors",
+    "huggingface_hub",
+]
 
 [project.urls]
 Homepage = "https://github.com/OscillateLabsLLC/switchboard"
@@ -53,6 +60,7 @@ Repository = "https://github.com/OscillateLabsLLC/switchboard"
 "ovos-switchboard-classifier-pipeline-plugin" = "ovos_switchboard.ovos.steps:ClassifierStep"
 "ovos-switchboard-prefix-pipeline-plugin" = "ovos_switchboard.ovos.steps:PrefixStep"
 "ovos-switchboard-llm-pipeline-plugin" = "ovos_switchboard.ovos.steps:LLMStep"
+"ovos-switchboard-decider-pipeline-plugin" = "ovos_switchboard.ovos.steps:DeciderStep"
 
 [tool.hatch.version]
 source = "code"

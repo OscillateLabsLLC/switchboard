@@ -176,3 +176,35 @@ def build_tools(definitions, lang="en-us"):
         tools.append(meta_tool(name, *spec))
         labels[name] = META_PREFIX + name
     return {"tools": tools, "labels": labels}
+
+
+# The decision model's options, in plain words. Measured wording (intent-eval exp_decider.py, plain framing): the
+# LLM's tool descriptions gave a decision model nothing to work with.
+DECIDER_QUESTION = "What does the speaker want the voice assistant to do?"
+DECIDER_NONE = "ignore"
+DECIDER_META = {"ask_knowledge": "a general question or chit-chat for the assistant",
+                "stop": "stop what the assistant is doing",
+                DECIDER_NONE: "none of these: not a request for the assistant"}
+QUOTED = re.compile(r'"([^"]+)"')
+ANGLE_SLOT = re.compile(r"<([^>]+)>")
+
+
+def plain_option(tool):
+    """A tool as a decision-model option: its description's first sentence and up to 2 examples, slots named.
+    None for meta tools a decision model isn't offered (unsupported; ignore is offered as DECIDER_META's NONE)."""
+    name, desc = tool["function"]["name"], tool["function"]["description"]
+    if name in DECIDER_META:
+        return None if name == DECIDER_NONE else DECIDER_META[name]
+    if name not in META_TOOLS:
+        first = desc.split(". ")[0].strip()
+        examples = [ANGLE_SLOT.sub(r"\1", e) for e in QUOTED.findall(desc)[:2]]
+        return f"{first}: {'; '.join(examples)}" if examples else first
+    return None
+
+
+def decider_options(tools):
+    """{tool name: plain option} for the offered tools, plus "none of these" last."""
+    options = {t["function"]["name"]: plain_option(t) for t in tools}
+    options = {k: v for k, v in options.items() if v}
+    options[DECIDER_NONE] = DECIDER_META[DECIDER_NONE]
+    return options

@@ -8,16 +8,19 @@ the classifier MODEL's ranking (a port, not the classifier stage's verdict) to o
   ClassifierStage  confident pick -> dispatch; the decline class -> decline or pass onward, per policy
   LLMStage         skill tool + addressee gate -> dispatch; ignore / failed gate / unreachable -> decline;
                    meta tools (ask_knowledge, stop, unsupported) -> pass, so the host's own stages answer
+  DeciderStage     a typed-decision model picks a shortlisted skill intent -> dispatch (no tool arguments: the
+                   skill gets Switchboard's own match data); "none of these" or unsure -> decline, or pass if
+                   configured; meta choices (ask_knowledge, stop) -> pass, as for the LLM
 
 `context` is {"gap_s": seconds since the assistant last spoke or None, "echo_run": int}.
 """
 import time
 
 from ovos_switchboard.core.device import DECLINE
-from ovos_switchboard.core.options import ClassifierOptions, EchoOptions, ExactOptions, LLMOptions
+from ovos_switchboard.core.options import ClassifierOptions, DeciderOptions, EchoOptions, ExactOptions, LLMOptions
 from ovos_switchboard.core.ports import LLMUnavailable
 from ovos_switchboard.core.schema import UNMAPPED
-from ovos_switchboard.core.tools import META_PREFIX
+from ovos_switchboard.core.tools import DECIDER_NONE, DECIDER_QUESTION, META_PREFIX, decider_options
 from ovos_switchboard.core.verdict import Outcome, Verdict, declined, passed
 from ovos_switchboard.core.wake import strip_wake_phrase
 
@@ -196,3 +199,32 @@ class LLMStage:
         label = self.shortlist.labels[tool]
         canon, renames = self.schema.label_map.get(label, (UNMAPPED + label, {}))
         return canon, {renames.get(k, k): v for k, v in strings.items()}
+
+
+class DeciderStage:
+    """A typed-decision model picks one shortlisted intent, in plain words, with a probability: a fast alternative
+    to the LLM stage for hosts without one. It never sees tool arguments, so dispatch carries Switchboard's own
+    match data."""
+    name = "decider"
+
+    def __init__(self, decider, shortlist, schema, resolver, options=DeciderOptions()):
+        self.decider, self.shortlist, self.schema = decider, shortlist, schema
+        self.resolver, self.options = resolver, options
+
+    def decide(self, utterance, _context=None):
+        """DISPATCH a confident skill pick; PASS meta picks; "none of these" or below threshold -> on_unsure."""
+        options = decider_options(self.shortlist.tools(utterance, self.options.shortlist_k))
+        res = self.decider.choose(utterance, DECIDER_QUESTION, options)
+        choice = res["choice"]
+        p = res["probabilities"][choice]
+        details = {"decider_choice": choice, "decider_p": round(p, 4), "decider_ms": res["ms"]}
+        if choice == DECIDER_NONE or p < self.options.threshold:
+            reason = "none of these" if choice == DECIDER_NONE else "below threshold"
+            unsure = passed if self.options.on_unsure == "pass" else declined
+            return unsure(self.name, f"decider: {reason}", details=details)
+        if choice in META_CANON:
+            return passed(self.name, f"decider chose {choice}", intent=META_CANON[choice], details=details)
+        label = self.shortlist.labels[choice]
+        intent, _ = self.schema.label_map.get(label, (UNMAPPED + label, {}))
+        return Verdict(self.name, Outcome.DISPATCH, intent, label, self.resolver.keyword_data(label, utterance), {},
+                       details=details)

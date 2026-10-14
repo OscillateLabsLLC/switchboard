@@ -101,7 +101,7 @@ Peak memory is the experiment process, which builds two stacks: an upper bound, 
 | Situation | Configuration | What you get (test) |
 |---|---|---|
 | **No LLM** (CPU only, offline) | Leave out the LLM step; set `route_decline_class` to `never` | Real speaker 76.6% (beats stock, p = 2.7e-5), desktop 77.8% (not significant). Magic 95–97%, below the 98% bar. Most cautious: acts on 7.5–10% of non-commands |
-| **No LLM, decider (experimental)** | The decider step (`[decider]` extra), tasksource-decider-nano (150M) on the CPU | Real speaker 79.7% (p = 8e-6 vs stock), desktop 81.0% (not significant). Same false accepts as no LLM. About 80 ms per decision on the CPU, no LLM host. The gain over no LLM is a few rows: not yet significant |
+| **No LLM, decider (experimental)** | The decider step (`[decider]` extra), tasksource-decider-nano (150M) on the CPU | Real speaker 79.7% (p = 8e-6 vs stock), desktop 81.0% (not significant). Same false accepts as no LLM. About 80 ms per decision on the CPU (M3 Max), no LLM host. The gain over no LLM is a few rows: not yet significant |
 | **Small local LLM** | Qwen3-1.7B (1.84 GB file) on LM Studio or similar, `shortlist_k` 12 | Passes every criterion. Real speaker 81.2%, desktop 84.1%, non-commands 10–12.5%. LLM route p50 965 ms, gate 114 ms (M3 Max GPU) |
 | **Small local LLM, latency first** | Same, `shortlist_k` 6 | Route p50 623 ms (-35%). About 1.5 points lower on real traffic, and magic 97.1% on the speaker, below the 98% bar |
 | **GPU LLM server** | Qwen3-14B-AWQ on vLLM (24 GB GPU) | Best measured: real speaker 84.4%, desktop 87.3%, non-commands 12.5%. About 400–470 ms per fresh LLM decision |

@@ -25,7 +25,9 @@ jobs:
       - name: Install dependencies
         run: |
           uv venv --python ${{ matrix.python-version }}
-          uv pip install --python .venv/bin/python -e ".[test,dev]"
+          # The decider extra's torch, as the CPU build: the default Linux wheel pulls gigabytes of CUDA.
+          uv pip install --python .venv/bin/python torch --index-url https://download.pytorch.org/whl/cpu
+          uv pip install --python .venv/bin/python -e ".[test,dev,decider]"
 
       - name: Run tests
         run: .venv/bin/pytest
