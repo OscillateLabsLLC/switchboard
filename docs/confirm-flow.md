@@ -1,6 +1,6 @@
 # Design: confirming high-risk actions
 
-Status: for review. Nothing here is built. The questions raised in the first draft are answered under Decided.
+Status: built (Switchboard `high_risk: "confirm"`, the Doublecheck skill) and tried live on an OVOS desktop. The questions raised in the first draft are answered under Decided.
 
 ## Today
 
@@ -21,7 +21,7 @@ High-risk intents (unlock, open covers, shutdown, clear data; `risk: high` in th
    - the held skill label (`skill_id:intent_name`);
    - the match data the skill would have received (today's hold doesn't pass this; it has to);
    - the utterance and the session.
-3. **The confirm skill asks, using the user's own words.** "You said: unlock the front door. Should I go ahead?" The frame is a translatable `.dialog` file, and the quoted utterance needs no translation. This avoids writing a spoken description for every high-risk intent in every language.
+3. **The confirm skill asks, using the user's own words.** "I think you said: unlock the front door. Should I do that?" The frame is a translatable `.dialog` file, and the quoted utterance needs no translation. This avoids writing a spoken description for every high-risk intent in every language.
 4. **It reads the answer with OVOS's own yes/no handling** (`ask_yesno`: localized yes/no vocabularies, one short listening window).
    - **On "yes":** it re-emits the held intent the way ovos-core's intent service does on a match (`ovos_core/intent_services/service.py`):
      - a reply to the original utterance message, which keeps its context and session;
@@ -35,7 +35,7 @@ High-risk intents (unlock, open covers, shutdown, clear data; `risk: high` in th
    - the held action is kept only in memory, only for that one question, and is dropped on timeout;
    - a "yes" outside the question window is just an ordinary utterance and goes through the normal pipeline, where "yes" alone dispatches nothing;
    - Switchboard's echo guard already keeps the assistant's own question from answering itself.
-6. **Config:** `high_risk` gains `"confirm"`. `"defer"` (silent hold) stays available; `"allow"` stays for testing. Default: `"confirm"` once it's been tried live.
+6. **Config:** `high_risk` gains `"confirm"`. `"defer"` (silent hold) stays available; `"allow"` stays for testing. The default stays `"defer"` (see Decided).
 
 ## How it would be tested
 
@@ -45,7 +45,7 @@ High-risk intents (unlock, open covers, shutdown, clear data; `risk: high` in th
 
 ## Decided
 
-1. **Skill name and repo:** a new OscillateLabsLLC skill in its own repo, like Hangup. The name is still open.
-2. **Default:** `"confirm"`, but only after a live trial. Until then, `"defer"` stays the default.
-3. **Wording:** quote the user ("You said: … Should I go ahead?"). Quoting needs no per-intent text and survives ASR errors honestly, because the user hears what was actually understood. A per-intent description ("Unlock the front door?") would read more naturally but needs maintenance per intent and language.
+1. **Skill name and repo:** [Doublecheck](https://github.com/OscillateLabsLLC/doublecheck), its own OscillateLabsLLC repo, like Hangup.
+2. **Default:** `"defer"`, permanently. `"confirm"` is opt-in: Switchboard can't guarantee the confirm skill is installed (Mike, after the live trial).
+3. **Wording:** quote the user ("I think you said: … Should I do that?"). Quoting needs no per-intent text and survives ASR errors honestly, because the user hears what was actually understood. A per-intent description ("Unlock the front door?") would read more naturally but needs maintenance per intent and language.
 4. **Medium-risk intents** (e.g. `alarm.cancel`): unchanged, never asked about.
