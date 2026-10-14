@@ -42,6 +42,7 @@ HANGUP_INTENT = "decline"  # interface contract with Hangup (HangupSkill.DECLINE
 SHARED_SECTION = "switchboard"
 SYNTHETIC_FILE = "synthetic_examples_slotted.jsonl"
 HANGUP_DETAIL_KEYS = ("confidence", "p_addressed", "llm_tool", "echo_run")
+HELD_REASON = "held_high_risk"  # silent until a confirm flow exists; the confirm flow, not Hangup, will ask
 
 
 def shared_config():
@@ -128,18 +129,21 @@ class SwitchboardStep(PipelinePlugin):
             self._log(verdict, "decline", turn, ms)
             return self._hangup(verdict, turn.utterance)
         if self.runtime.settings.high_risk == "defer" and self.runtime.schema.risk(verdict.intent) == "high":
+            # Consumed, not passed: returning None would let a later stock step (Adapt, Padatious) run it anyway.
             turn.record.held = True
-            self._log(verdict, "held", turn, ms, "high-risk intent, no confirm flow")
-            return None
+            self._log(verdict, "held", turn, ms, HELD_REASON)
+            return self._hangup(verdict, turn.utterance, HELD_REASON,
+                                {"held_intent": verdict.intent, "held_label": verdict.label})
         self._log(verdict, "dispatch", turn, ms)
         return IntentHandlerMatch(match_type=verdict.label, match_data=dict(verdict.match_data),
                                   skill_id=verdict.label.split(":", 1)[0], utterance=turn.utterance)
 
-    def _hangup(self, verdict, utterance):
+    def _hangup(self, verdict, utterance, reason=None, extra=None):  # pylint: disable=R0913
         skill_id = self.runtime.settings.hangup_skill_id
         details = {k: verdict.details[k] for k in HANGUP_DETAIL_KEYS if verdict.details.get(k) is not None}
         return IntentHandlerMatch(match_type=f"{skill_id}:{HANGUP_INTENT}", skill_id=skill_id, utterance=utterance,
-                                  match_data={"reason": verdict.reason, "stage": verdict.stage, **details})
+                                  match_data={"reason": reason or verdict.reason, "stage": verdict.stage, **details,
+                                              **(extra or {})})
 
     def _log(self, verdict, action, turn, ms, reason=None):
         self.runtime.log.write({

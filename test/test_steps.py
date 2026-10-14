@@ -85,12 +85,31 @@ def test_full_pipeline_declines_assistant_speech_at_the_classifier(runtime):
     assert (name, match.match_type, match.match_data["reason"]) == ("classifier", HANGUP, "decline_class")
 
 
-def test_high_risk_hold_binds_later_steps(runtime, tmp_path):
+class StockStep:
+    """Stands in for a stock matcher after Switchboard (Adapt, Padatious) that would run anything it sees."""
+    name = "stock"
+
+    def __init__(self):
+        self.seen = []
+
+    def match(self, utterances, _lang, _message):
+        self.seen.append(utterances[0])
+        return "stock match"
+
+
+def test_high_risk_hold_consumes_the_utterance(runtime, tmp_path):
+    """A held intent goes to Hangup, silently: returning no match would let a later stock step run it anyway."""
     exact, classifier = ExactStep(runtime.bus, {}, runtime=runtime), ClassifierStep(runtime.bus, {}, runtime=runtime)
+    stock = StockStep()
     runtime.rebuild()
-    assert run_pipeline([exact, classifier], "clear my browsing data") == (None, None)
+    name, match = run_pipeline([exact, classifier, stock], "clear my browsing data")
+    assert (name, match.match_type) == ("exact", HANGUP)
+    assert match.match_data["reason"] == "held_high_risk"
+    assert (match.match_data["held_intent"], match.match_data["held_label"]) == (
+        "data.clear", "skill-data_controls.neongeckocom:clear_data")
+    assert stock.seen == [], "nothing after Switchboard saw the held utterance"
     held = [r for r in records(tmp_path) if r["action"] == "held"]
-    assert [r["step"] for r in held] == ["exact"], "the classifier never got to re-decide the held utterance"
+    assert [(r["step"], r["reason"]) for r in held] == [("exact", "held_high_risk")]
 
 
 def test_llm_step_dispatches_declines_and_passes(runtime):
