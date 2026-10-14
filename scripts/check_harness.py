@@ -3,8 +3,9 @@
 
 Builds each device from the harness's own files (manifest, examples, synthetic + dialog negatives, tools, prompts)
 and replays LLM answers from its llm_cache.jsonl. No model calls: a cache miss fails the check, because the
-references were measured on cached answers. References: preds/v6__<device>__<route>__<SPLIT>.jsonl (v5 + word-boundary matcher +
-catch-all yield 0.8, written by intent-eval refs_v6.py from its own implementation of the rule).
+references were measured on cached answers. References: preds/v6__<device>__<route>__<SPLIT>.jsonl: v5 plus the
+word-boundary matcher and the catch-all yield at 0.8, written by intent-eval refs_v6.py from the experiment's own
+implementation of the rule.
 
 Usage (from the switchboard repo, in an environment with the package installed):
     python scripts/check_harness.py ~/coding/OscillateLabs/intent-eval [--quick]
