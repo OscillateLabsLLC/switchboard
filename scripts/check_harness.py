@@ -2,7 +2,7 @@
 """Regression gate: the packaged router must reproduce the intent-eval harness's reference predictions exactly.
 
 Builds each device from the harness's own files (manifest, examples, synthetic + dialog negatives, tools, prompts)
-and replays LLM answers from its llm_cache.jsonl. No model calls: a cache miss fails the check, because the
+and replays LLM answers from its cache/llm_cache.jsonl. No model calls: a cache miss fails the check, because the
 references were measured on cached answers. References: preds/v7__<device>__<route>__<SPLIT>.jsonl: v5 plus the
 word-boundary matcher, the catch-all yield at 0.8 and float32 classifier features, written by intent-eval
 refs_v6.py (its v7 mode) from the experiment's own implementation of the rule.
@@ -25,11 +25,13 @@ from ovos_switchboard.core.schema import Schema
 # Must match the harness's llm_fallback.py: the model name is part of every cached request body.
 HARNESS_MODEL = "Qwen/Qwen3-14B-AWQ"
 DEVICES = {
-    "mac": {"manifest": "introspection.json", "examples": "examples_live.jsonl",
-            "synthetic": ["synthetic_examples_slotted.jsonl", "dialog_negatives.jsonl"], "tools": "tools.json"},
-    "hub": {"manifest": "introspection_hub.json", "examples": "examples_hub.jsonl",
-            "synthetic": ["synthetic_examples_slotted.jsonl", "dialog_negatives_hub.jsonl"], "tools": "tools_hub.json",
-            "shared_examples": ["examples_live.jsonl"], "shared_manifests": ["introspection.json"]},
+    "mac": {"manifest": "devices/desktop/manifest.json", "examples": "devices/desktop/examples.jsonl",
+            "synthetic": ["skills/synthetic_examples_slotted.jsonl", "devices/desktop/dialog_negatives.jsonl"],
+            "tools": "devices/desktop/tools.json"},
+    "hub": {"manifest": "devices/speaker/manifest.json", "examples": "devices/speaker/examples.jsonl",
+            "synthetic": ["skills/synthetic_examples_slotted.jsonl", "devices/speaker/dialog_negatives.jsonl"],
+            "tools": "devices/speaker/tools.json", "shared_examples": ["devices/desktop/examples.jsonl"],
+            "shared_manifests": ["devices/desktop/manifest.json"]},
 }
 
 
@@ -61,8 +63,8 @@ def build_router(harness, device, route):
         tools_doc = json.load(f)
     llm = CacheOnlyClient(LLMEndpoint(url="http://cache-only.invalid", model=HARNESS_MODEL),
                           system_prompt=prompt("fallback_strict.txt"), gate_prompt=prompt("addressee_gate.txt"),
-                          cache_path=path("llm_cache.jsonl"))
-    return Router(dev, Schema.load(path("intents.yaml")), tools_doc, synthetic=synthetic, llm=llm,
+                          cache_path=path("cache/llm_cache.jsonl"))
+    return Router(dev, Schema.load(path("schema/intents.yaml")), tools_doc, synthetic=synthetic, llm=llm,
                   config=RouterConfig(classifier=ClassifierOptions(route_decline_class=route)))
 
 
@@ -96,8 +98,8 @@ def main(argv):
         sys.exit(__doc__)
     harness = os.path.abspath(os.path.expanduser(args[0]))
     sys.path.insert(0, harness)
-    os.chdir(harness)  # context_policy reads its inputs relative to the harness
-    import context_policy as cp  # pylint: disable=import-error  # lives in the harness checkout
+    os.chdir(harness)  # the harness writes and reads relative to its root
+    from switchboard_eval.harness import context_policy as cp  # pylint: disable=import-error  # the harness checkout
     splits = ["dev"] if "--quick" in argv else ["dev", "test"]
     ok = True
     for device in DEVICES:
