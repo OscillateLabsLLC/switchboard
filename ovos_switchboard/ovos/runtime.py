@@ -59,6 +59,9 @@ class Settings:  # pylint: disable=too-many-instance-attributes  # one field per
     model_cache_max: int = 2            # newest models kept per kind
     schema_path: str = ""
     wake_phrases: tuple = ()            # stripped from the start of utterances; default: the listener's hotwords
+    # Skills whose own pipeline step must dispatch them: a Switchboard verdict for one passes to that step instead.
+    # OCP's handlers need match data only OCP's matcher adds ("media_type"), so ocp:play crashed when we dispatched.
+    delegate_skills: tuple = ("ocp",)
     speech: SpeechOptions = field(default_factory=SpeechOptions)
 
     def __post_init__(self):
@@ -96,6 +99,7 @@ class Build:
 class UtteranceRecord:
     """What the steps have settled about one utterance round."""
     held: bool = False     # a step held a high-risk intent: later steps must not act on this utterance
+    delegated: bool = False  # a step handed it to its skill's own pipeline step: later steps must not act either
     settled_by: str = ""   # shadow mode: the first step with a decisive verdict
 
 
