@@ -83,7 +83,7 @@ Measured details are in [docs/evaluation.md](docs/evaluation.md).
 - **Languages.** Only English has been measured on real traffic. French skills declare few templates, so Switchboard passes more often in French. In Galician, "not for me" sometimes outranks real requests, and the Galician test phrases haven't been reviewed by a native speaker. The LLM prompts are English.
 - **Confirming high-risk actions is opt-in, by design.** Asking first needs the [Doublecheck](https://github.com/OscillateLabsLLC/doublecheck) skill, and Switchboard can't guarantee it's installed, so the default holds high-risk requests silently. Doublecheck asks in English, Catalan and French; in other languages it holds silently too.
 - **Hangup is required.** Without it, declines go nowhere and the utterance is dropped silently.
-- **Hardware.** Latency and memory have been measured on a desktop only. Training peaks at about 3.4 GB with 400+ intents (once, in a child process; later starts load a cached model).
+- **Hardware.** Measured on an Apple-silicon laptop and a 4-core mini PC (9.5 ms p95 without an LLM); not yet on a Raspberry Pi. Training peaks at about 3.4 GB with 400+ intents (once, in a child process; later starts load a cached model).
 - **One home.** The real traffic comes from one household's two devices.
 
 ## Configuration

@@ -9,7 +9,7 @@ Every number here comes from Switchboard's evaluation harness, a separate test s
 - **Non-commands:** near misses, out-of-domain speech, the assistant's own TTS heard back, and background speech. Plus 600 public sentences from meetings, idioms and dialogue, as a stress test.
 - **Comparator:** stock OVOS as shipped (Padatious + Model2Vec), not a hand-tuned setup.
 - **One skill intent, several of ours:** where a skill handles several of our intents with one intent (the OVOS and Neon alerts skills cancel alarms and timers alike), a dispatch counts as right for each. The rule is applied to stock OVOS and Switchboard identically.
-- **Hardware:** an Apple M3 Max laptop, plus a 24 GB desktop GPU (RTX 3090) for the 14B LLM. **Nothing has been measured on a mini PC or a Raspberry Pi yet.**
+- **Hardware:** an Apple M3 Max laptop, plus a 24 GB desktop GPU (RTX 3090) for the 14B LLM. The decision without an LLM was also timed on a mini PC (4-core x86, 7.5 GB). **Nothing has been measured on a Raspberry Pi yet.**
 - **Other languages:** English is the only language with real traffic. The others are measured on template hold-outs, plus 62 Galician sentences drafted with an AI model and **not reviewed by a native speaker**.
 
 ## Headline (test split, default configuration, 14B LLM on a GPU)
@@ -25,6 +25,7 @@ Every number here comes from Switchboard's evaluation harness, a separate test s
 - **Same answer every time.** Three fresh builds gave zero routing differences. A local LLM at temperature 0, rerun without its cache, reproduced every decision.
 - **Speed (M3 Max).**
   - The decision without the LLM takes 1.9 ms at p95.
+  - On a 4-core mini PC (a Beelink, also running other services): 9.2–9.5 ms at p95, about 4× the M3 Max and far under the 300 ms bar. Training the classifier took 77 s (21 s on the M3 Max); it runs once, then later starts load the cached model.
   - Live end-to-end decisions take 46–108 ms. Shipped Padatious takes 57–114 ms; Padacioso, 78–137 ms.
   - These numbers need the ovos-workshop converse fix ([OpenVoiceOS/ovos-workshop#714](https://github.com/OpenVoiceOS/ovos-workshop/pull/714)). Without it, every pipeline, stock included, waits an extra 0.5 s per utterance.
 - **In a live trial on the desktop:** 1 wrong route per 14-utterance round. Both stock pipelines had 5.
@@ -124,7 +125,7 @@ Peak memory is the experiment process, which builds two stacks: an upper bound, 
 
 ## Not yet measured
 
-- Mini PC and Raspberry Pi latency and memory.
+- Raspberry Pi latency and memory, and the LLM-free configuration's live end-to-end time on a mini PC.
 - Native-speaker evaluation data for any language except English.
 - Traffic from more than one home.
 - Training memory with a different solver.
