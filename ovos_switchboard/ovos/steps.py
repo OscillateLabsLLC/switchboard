@@ -6,6 +6,7 @@
   ovos-switchboard-classifier-pipeline-plugin  confident picks -> dispatch; decline class -> decline or pass on
   ovos-switchboard-prefix-pipeline-plugin      trailing speech after a declared phrase -> dispatch
   ovos-switchboard-llm-pipeline-plugin         LLM with manifest-derived tools and an addressee gate
+  ovos-switchboard-decider-pipeline-plugin     a local typed-decision model picks a shortlisted intent (no LLM host)
 
 A step turns its stage's verdict into OVOS terms: DISPATCH -> IntentHandlerMatch to the skill, DECLINE -> a match
 for the Hangup skill (silent), PASS -> None. Each step has its own config section (`intents.<pipeline id>`) over the
@@ -25,6 +26,7 @@ from ovos_switchboard.core.device import harvest_dialog_negatives
 from ovos_switchboard.core.exact import ExactLayer
 from ovos_switchboard.core.options import (
     ClassifierOptions,
+    DeciderOptions,
     EchoOptions,
     ExactOptions,
     LLMOptions,
@@ -32,7 +34,7 @@ from ovos_switchboard.core.options import (
     options_from,
 )
 from ovos_switchboard.core.shortlist import Shortlist
-from ovos_switchboard.core.stages import ClassifierStage, EchoStage, ExactStage, LLMStage, PrefixStage
+from ovos_switchboard.core.stages import ClassifierStage, DeciderStage, EchoStage, ExactStage, LLMStage, PrefixStage
 from ovos_switchboard.core.tools import build_tools
 from ovos_switchboard.core.verdict import Outcome
 from ovos_switchboard.ovos.runtime import LOG, MODES, SwitchboardRuntime, UtteranceRecord
@@ -41,7 +43,7 @@ from ovos_switchboard.ovos.runtime import LOG, MODES, SwitchboardRuntime, Uttera
 HANGUP_INTENT = "decline"  # interface contract with Hangup (HangupSkill.DECLINE_INTENT)
 SHARED_SECTION = "switchboard"
 SYNTHETIC_FILE = "synthetic_examples_slotted.jsonl"
-HANGUP_DETAIL_KEYS = ("confidence", "p_addressed", "llm_tool", "echo_run")
+HANGUP_DETAIL_KEYS = ("confidence", "p_addressed", "llm_tool", "echo_run", "decider_choice", "decider_p")
 OVERHEARD_REASON = "decline_class_unsupported"
 HELD_REASON = "held_high_risk"  # silent until a confirm flow exists; the confirm flow, not Hangup, will ask
 
@@ -249,3 +251,31 @@ class LLMStep(SwitchboardStep):
         """Build the LLM stage's tools and shortlist from the current registrations."""
         tools = build_tools(b.definitions, b.lang)
         return LLMStage(self.llm, Shortlist(tools, b.device.examples), b.schema, b.resolver, self.options)
+
+
+class DeciderStep(SwitchboardStep):
+    """Pipeline step: route to a shortlisted skill intent with a local typed-decision model. An alternative to the
+    LLM step where no LLM host is available; place it where the LLM step would go (or before it, with
+    on_unsure "pass")."""
+    name = "decider"
+    EXTRA = ("torch", "transformers")
+
+    def setup(self):
+        from importlib.util import find_spec
+        if not all(find_spec(m) for m in self.EXTRA):
+            # OVOS instantiates every installed pipeline plugin: without the "decider" extra, stay inert.
+            LOG.warning("ovos-switchboard-decider-pipeline-plugin needs the 'decider' extra (torch, transformers); "
+                        "the decider step never matches")
+            return
+        self.decider = None
+        self.options = options_from(DeciderOptions, self.config)
+        self.runtime.provide(self.name, self.build, slow=True)
+
+    def build(self, b):
+        """Build the decider stage's shortlist from the current registrations; load the model on first build, off
+        the boot path (the first ever build downloads it)."""
+        if self.decider is None:
+            from ovos_switchboard.adapters.decider_model import DeciderModel, TasksourceDecider
+            self.decider = TasksourceDecider(options_from(DeciderModel, self.config))
+        tools = build_tools(b.definitions, b.lang)
+        return DeciderStage(self.decider, Shortlist(tools, b.device.examples), b.schema, b.resolver, self.options)
