@@ -8,6 +8,7 @@ Every number here comes from Switchboard's evaluation harness, a separate test s
 - **Magic phrases:** rows that match a phrase some installed skill declares.
 - **Non-commands:** near misses, out-of-domain speech, the assistant's own TTS heard back, and background speech. Plus 600 public sentences from meetings, idioms and dialogue, as a stress test.
 - **Comparator:** stock OVOS as shipped (Padatious + Model2Vec), not a hand-tuned setup.
+- **One skill intent, several of ours:** where a skill handles several of our intents with one intent (the OVOS and Neon alerts skills cancel alarms and timers alike), a dispatch counts as right for each. The rule is applied to stock OVOS and Switchboard identically.
 - **Hardware:** an Apple M3 Max laptop, plus a 24 GB desktop GPU (RTX 3090) for the 14B LLM. **Nothing has been measured on a mini PC or a Raspberry Pi yet.**
 - **Other languages:** English is the only language with real traffic. The others are measured on template hold-outs, plus 62 Galician sentences drafted with an AI model and **not reviewed by a native speaker**.
 
@@ -17,7 +18,7 @@ Every number here comes from Switchboard's evaluation harness, a separate test s
 |---|---|---|
 | Declared phrases ("magic") right | 96.1% | 98.1% (speaker) / 100% (desktop) |
 | Real speaker requests right | 42.2% | **84.4%** (p = 4.6e-7) |
-| Real desktop requests right | 69.8% | **87.3%** (p = 0.007) |
+| Real desktop requests right | 71.4% | **88.9%** (p = 0.007) |
 | Acts on non-commands | 100% | **12.5%** |
 | High-risk actions executed by mistake | 0 | 0 (always held) |
 
@@ -37,15 +38,15 @@ Real requests on the test split, split by outcome:
 | | right | wrong action | did nothing |
 |---|---|---|---|
 | stock OVOS, speaker | 42.2% | **56.2%** | 1.6% |
-| stock OVOS, desktop | 69.8% | 28.6% | 1.6% |
+| stock OVOS, desktop | 71.4% | 27.0% | 1.6% |
 | Switchboard, no LLM, speaker | 76.6% | **1.6%** | 21.9% |
-| Switchboard, no LLM, desktop | 77.8% | 9.5% | 12.7% |
+| Switchboard, no LLM, desktop | 79.4% | 7.9% | 12.7% |
 | Switchboard + decider, speaker | 79.7% | 1.6% | 18.8% |
-| Switchboard + decider, desktop | 81.0% | 9.5% | 9.5% |
+| Switchboard + decider, desktop | 82.5% | 7.9% | 9.5% |
 | Switchboard + 14B LLM, speaker | 84.4% | 1.6% | 14.1% |
-| Switchboard + 14B LLM, desktop | 87.3% | 11.1% | 1.6% |
+| Switchboard + 14B LLM, desktop | 88.9% | 9.5% | 1.6% |
 
-Stock OVOS mostly fails by doing the wrong thing. Switchboard mostly fails by doing nothing, which a user can simply repeat or rephrase. An LLM or the decider turns more of the "did nothing" rows into right answers. On the desktop, wrong actions stay around 10% at every tier, which is worth a closer look.
+Stock OVOS mostly fails by doing the wrong thing. Switchboard mostly fails by doing nothing, which a user can simply repeat or rephrase. An LLM or the decider turns more of the "did nothing" rows into right answers. On the desktop, wrong actions stay at 8–10% at every tier. About a third of them are the OVOS weather skill answering "what's the weather tomorrow" through its current-weather intent: the right handler, which the scoring can't credit without knowing which of that skill's intents ran. The rest are a weekday question answered by the date skill's weekday intent, a question about last night's weather, the date skill's `when is {x}` catch-all taking "when is sunset", and an overheard quote. (On dev, "dismiss alarm" and "dismiss timer" also go wrong: no template uses that verb.)
 
 ## What it does well
 
@@ -99,11 +100,11 @@ Peak memory is the experiment process, which builds two stacks: an upper bound, 
 
 | Situation | Configuration | What you get (test) |
 |---|---|---|
-| **No LLM** (CPU only, offline) | Leave out the LLM step; set `route_decline_class` to `never` | Real speaker 76.6% (beats stock, p = 2.7e-5), desktop 77.8% (not significant). Magic 95–97%, below the 98% bar. Most cautious: acts on 7.5–10% of non-commands |
-| **No LLM, decider (experimental)** | The decider step (`[decider]` extra), tasksource-decider-nano (150M) on the CPU | Real speaker 79.7% (p = 8e-6 vs stock), desktop 81.0% (not significant). Same false accepts as no LLM. About 80 ms per decision on the CPU (M3 Max), no LLM host. The gain over no LLM is a few rows: not yet significant |
-| **Small local LLM** | Qwen3-1.7B (1.84 GB file) on LM Studio or similar, `shortlist_k` 12 | Passes every criterion. Real speaker 81.2%, desktop 84.1%, non-commands 10–12.5%. LLM route p50 965 ms, gate 114 ms (M3 Max GPU) |
-| **Small local LLM, latency first** | Same, `shortlist_k` 6 | Route p50 623 ms (-35%). About 1.5 points lower on real traffic, and magic 97.1% on the speaker, below the 98% bar |
-| **GPU LLM server** | Qwen3-14B-AWQ on vLLM (24 GB GPU) | Best measured: real speaker 84.4%, desktop 87.3%, non-commands 12.5%. About 400–470 ms per fresh LLM decision |
+| **No LLM** (CPU only, offline) | Leave out the LLM step; set `route_decline_class` to `never` | Real speaker 76.6% (beats stock, p = 2.7e-5), desktop 79.4% (not significant). Magic 95–97%, below the 98% bar. Most cautious: acts on 7.5–10% of non-commands |
+| **No LLM, decider (experimental)** | The decider step (`[decider]` extra), tasksource-decider-nano (150M) on the CPU | Real speaker 79.7% (p = 8e-6 vs stock), desktop 82.5% (not significant). Same false accepts as no LLM. About 80 ms per decision on the CPU (M3 Max), no LLM host. The gain over no LLM is a few rows: not yet significant |
+| **Small local LLM** | Qwen3-1.7B (1.84 GB file) on LM Studio or similar, `shortlist_k` 12 | Passes every criterion. Real speaker 81.2%, desktop 85.7%, non-commands 10–12.5%. LLM route p50 965 ms, gate 114 ms (M3 Max GPU) |
+| **Small local LLM, latency first** | Same, `shortlist_k` 6 | Route p50 623 ms (-35%). About 1.5 points lower on real speaker traffic (desktop the same), and magic 97.1% on the speaker, below the 98% bar |
+| **GPU LLM server** | Qwen3-14B-AWQ on vLLM (24 GB GPU) | Best measured: real speaker 84.4%, desktop 88.9%, non-commands 12.5%. About 400–470 ms per fresh LLM decision |
 
 - **Bigger models aren't automatically better.**
   - Qwen3-4B matched the 1.7B's accuracy but acted on more non-commands. On dev it acted on 33.3%, failing the 25% limit. It's also twice as slow (route p50 1,978 ms), and on LM Studio it wasn't repeatable: about 5% of its LLM decisions changed between two runs at temperature 0. The 1.7B reproduced every decision.
