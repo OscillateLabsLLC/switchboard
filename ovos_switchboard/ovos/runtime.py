@@ -291,7 +291,11 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
                       self.settings.confirm_skill_id)
 
     def _on_speak(self, message):
-        self.speech.heard_assistant(message.data.get("utterance", ""), session_of(message))
+        # Doublecheck quotes the user ("I think you said: <request>"), so its words would make the user asking again
+        # look like an echo. Its question is answered inside get_response, never through the pipeline.
+        speaker = message.context.get("skill_id") or (message.data.get("meta") or {}).get("skill")
+        self.speech.heard_assistant(message.data.get("utterance", ""), session_of(message),
+                                    echoable=speaker != self.settings.confirm_skill_id)
 
     def _on_outcome(self, message):
         data = message.data

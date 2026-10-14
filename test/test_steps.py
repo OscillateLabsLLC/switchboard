@@ -78,6 +78,19 @@ def test_echo_step_needs_no_registrations(bus):
     assert run_pipeline([echo], "turn off the porch light") == (None, None)
 
 
+def test_doublechecks_quote_of_the_user_is_not_echo(bus):
+    """Live trial: "what time is it" again after "I think you said: what time is it..." was declined as echo."""
+    rt = SwitchboardRuntime(bus, Settings(mode="active", decision_log=False), start=False)
+    echo = EchoStep(bus, {}, runtime=rt)
+    question = "I think you said: what time is it. Should I do that?"
+    context = {**utterance_message().context, "skill_id": DOUBLECHECK}
+    bus.emit(Message("speak", {"utterance": question}, context))
+    assert run_pipeline([echo], "what time is it") == (None, None)
+    assert rt.context("what time is it", "default")["gap_s"] is not None, "it still counts as the assistant speaking"
+    bus.emit(Message("speak", {"utterance": question}, utterance_message().context))
+    assert run_pipeline([echo], "what time is it")[1].match_data["reason"] == "echo"
+
+
 def test_full_pipeline_declines_assistant_speech_at_the_classifier(runtime):
     steps = [EchoStep(runtime.bus, {}, runtime=runtime), ExactStep(runtime.bus, {}, runtime=runtime),
              ClassifierStep(runtime.bus, {}, runtime=runtime)]
