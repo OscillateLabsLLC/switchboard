@@ -20,6 +20,7 @@ from ovos_plugin_manager.templates.pipeline import IntentHandlerMatch, PipelineP
 
 from ovos_switchboard import data
 from ovos_switchboard.adapters.bus_registry import session_of
+from ovos_switchboard.adapters.isolated_training import train_isolated
 from ovos_switchboard.adapters.openai_llm import LLMClient, LLMEndpoint
 from ovos_switchboard.core.classifier import Classifier, model_fingerprint, training_data
 from ovos_switchboard.core.device import harvest_dialog_negatives
@@ -226,7 +227,7 @@ class ClassifierStep(SwitchboardStep):
             synthetic += harvest_dialog_negatives(self.runtime.dialog_lines(b.lang), b.definitions, b.lang)
         rows = training_data(b.device, b.schema, synthetic)
         classifier, cached = self.runtime.models.get_or_build("classifier", [model_fingerprint(), rows],
-                                                              lambda: Classifier.train(rows), Classifier)
+                                                              lambda: train_isolated(rows), Classifier)
         LOG.info("switchboard classifier %s (%d training rows)", "loaded from cache" if cached else "trained",
                  len(rows))
         return ClassifierStage(classifier, b.resolver, self.options)
