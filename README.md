@@ -30,7 +30,7 @@ A "not for me" utterance that was passed on and then finds no LLM tool (`unsuppo
 
 **High-risk intents** (unlock, open covers, shutdown, clear data) are never acted on directly. A held utterance is consumed, so neither later Switchboard steps nor the stock steps after them (Adapt, Padatious) can run it:
 - `high_risk: "defer"` (default): declined silently through Hangup, with reason `held_high_risk` and the held intent recorded.
-- `high_risk: "confirm"`: handed to the [Doublecheck](https://github.com/OscillateLabsLLC/doublecheck) skill, which repeats the request back ("You said: unlock the front door. Should I go ahead?") and runs exactly the held intent only on a clear yes. Requires Doublecheck. Planned as the default once it has been tried live ([design](docs/confirm-flow.md)).
+- `high_risk: "confirm"`: handed to the [Doublecheck](https://github.com/OscillateLabsLLC/doublecheck) skill, which repeats the request back ("I think you said: unlock the front door. Should I do that?") and runs exactly the held intent only on a clear yes. Requires Doublecheck. Planned as the default once it has been tried live ([design](docs/confirm-flow.md)).
 
 ## Pipeline order (recommended)
 
