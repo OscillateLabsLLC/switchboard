@@ -36,6 +36,14 @@ class EchoOptions:
 
 
 @dataclass(frozen=True)
+class ExactOptions:
+    """When a catch-all template match ('play {query}', 'call {contact}') gives way to the classifier."""
+    # Confidence in a DIFFERENT intent (or the decline class) that overrules a catch-all match; 0 never overrules.
+    # Chosen on dev, confirmed on test (intent-eval exp_guard_rules.py, 2026-10-13).
+    catch_all_yield: float = 0.8
+
+
+@dataclass(frozen=True)
 class PrefixOptions:
     """Trailing speech after a declared phrase."""
     prefix_min_literal: int = 3     # literal words a slot-free template needs to match as a prefix

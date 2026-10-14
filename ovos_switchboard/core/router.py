@@ -3,14 +3,14 @@
 The OVOS plugin runs each stage as its own pipeline step instead; this composition exists so the regression gate
 (scripts/check_harness.py) verifies the very stage objects the steps run. Output is the harness decision shape.
 
-  echo -> exact -> classifier -> [prefix, off by default; unvalidated] -> LLM
+  echo -> exact (catch-alls may yield to the classifier model) -> classifier -> [prefix, off by default] -> LLM
 """
 from dataclasses import dataclass, field
 
 from ovos_switchboard.core.classifier import Classifier
 from ovos_switchboard.core.exact import ExactLayer
 from ovos_switchboard.core.labels import LabelSelector
-from ovos_switchboard.core.options import ClassifierOptions, EchoOptions, LLMOptions
+from ovos_switchboard.core.options import ClassifierOptions, EchoOptions, ExactOptions, LLMOptions
 from ovos_switchboard.core.shortlist import Shortlist
 from ovos_switchboard.core.slots import SlotExtractor
 from ovos_switchboard.core.stages import ClassifierStage, EchoStage, ExactStage, LabelResolver, LLMStage, PrefixStage
@@ -25,6 +25,7 @@ DETAIL_KEYS = ("confidence", "top3", "label_how", "decline_class")
 class RouterConfig:
     """Options for every stage. prefix_min_literal 0 turns the prefix stage off; no wake phrases strips none."""
     echo: EchoOptions = field(default_factory=EchoOptions)
+    exact: ExactOptions = field(default_factory=ExactOptions)
     classifier: ClassifierOptions = field(default_factory=ClassifierOptions)
     llm: LLMOptions = field(default_factory=LLMOptions)
     prefix_min_literal: int = 0
@@ -44,8 +45,8 @@ class Router:
             exact_layer.enable_prefix(c.prefix_min_literal)
             self.prefix = PrefixStage(exact_layer, self.resolver, wake)
         self.echo = EchoStage(c.echo)
-        self.exact = ExactStage(exact_layer, self.resolver, wake)
         classifier = Classifier.for_device(device, schema, synthetic, c.device_classes_only)
+        self.exact = ExactStage(exact_layer, self.resolver, wake, ranker=classifier.rank, options=c.exact)
         self.classifier = ClassifierStage(classifier, self.resolver, c.classifier)
         self.llm = LLMStage(llm, Shortlist(tools_doc, device.examples), schema, self.resolver, c.llm) if llm else None
 

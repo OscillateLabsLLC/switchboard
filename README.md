@@ -20,7 +20,7 @@ Each step is its own OVOS pipeline plugin. You can place, drop or adopt each one
 - **Decline** dispatches to the [Hangup](https://github.com/OscillateLabsLLC/hangup) skill, which speaks nothing and records the utterance and the reason. Hangup is required.
 - **Pass** returns no match, so later pipeline steps decide.
 
-Steps never consult each other. Pipeline order already means a step only sees what earlier steps passed on. The classifier owns the decline-class policy (`route_decline_class`), which decides whether a "not for me" verdict declines on the spot or passes on to the LLM:
+Steps never act on each other's verdicts. Pipeline order already means a step only sees what earlier steps passed on. One measured exception: a **catch-all** template, a slot behind one literal word (`play {query}`, `call {contact}`), claims nearly any speech that starts with its word, so the exact step checks it against the classifier model's ranking. When the classifier ranks a different intent (or "not for me") first with `catch_all_yield` confidence, the exact step passes and logs which catch-all was overruled. That keeps "play something like glados" out of media playback, and Neon's own "call me Neon, I am ..." from placing a call. The classifier owns the decline-class policy (`route_decline_class`), which decides whether a "not for me" verdict declines on the spot or passes on to the LLM:
 - `active` (default): passes on only if the assistant spoke within the last 120 s.
 - `always`: always passes on.
 - `never`: always declines on the spot.
@@ -78,6 +78,7 @@ Shared settings go under `intents.switchboard`. Each step's settings go under it
 | shared | `model_cache`, `model_cache_path`, `model_cache_max` | on, `$XDG_CACHE_HOME/switchboard`, 2 | reuse the trained classifier across restarts while its inputs are unchanged. Stored as plain arrays (`.npz`, no pickle), so a tampered file can't run code |
 | shared | `decision_log`, `decision_log_path` | on, `$XDG_STATE_HOME/switchboard/decisions.jsonl` | JSONL of every verdict and OVOS's actual outcome. Holds household speech; stays local |
 | echo | `echo_run_min` | 4 | contiguous words shared with recent assistant speech |
+| exact | `catch_all_yield` | 0.8 | classifier confidence in another intent that overrules a catch-all template; 0 never overrules. Without the classifier step, catch-alls always dispatch |
 | prefix | `prefix_min_literal` | 3 | literal words a slot-free template needs to match as a prefix |
 | classifier | `threshold` | 0.5 | confidence needed to dispatch |
 | classifier | `route_decline_class` | `active` | `never` / `active` / `always` |

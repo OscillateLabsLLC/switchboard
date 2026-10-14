@@ -23,7 +23,14 @@ from ovos_switchboard.adapters.openai_llm import LLMClient, LLMEndpoint
 from ovos_switchboard.core.classifier import Classifier, model_fingerprint, training_data
 from ovos_switchboard.core.device import harvest_dialog_negatives
 from ovos_switchboard.core.exact import ExactLayer
-from ovos_switchboard.core.options import ClassifierOptions, EchoOptions, LLMOptions, PrefixOptions, options_from
+from ovos_switchboard.core.options import (
+    ClassifierOptions,
+    EchoOptions,
+    ExactOptions,
+    LLMOptions,
+    PrefixOptions,
+    options_from,
+)
 from ovos_switchboard.core.shortlist import Shortlist
 from ovos_switchboard.core.stages import ClassifierStage, EchoStage, ExactStage, LLMStage, PrefixStage
 from ovos_switchboard.core.tools import build_tools
@@ -158,7 +165,14 @@ class ExactStep(SwitchboardStep):
     name = "exact"
 
     def setup(self):
-        self.runtime.provide(self.name, lambda b: ExactStage(ExactLayer(b.device, b.schema), b.resolver, b.wake))
+        self.options = options_from(ExactOptions, self.config)
+        self.runtime.provide(self.name, lambda b: ExactStage(ExactLayer(b.device, b.schema), b.resolver, b.wake,
+                                                             ranker=self.rank, options=self.options))
+
+    def rank(self, utterance):
+        """The classifier's ranking, or None while it trains or when the classifier step isn't installed."""
+        classifier = self.runtime.stage("classifier")
+        return classifier.classifier.rank(utterance) if classifier else None
 
 
 class PrefixStep(SwitchboardStep):
