@@ -7,7 +7,7 @@ from ovos_bus_client.message import Message
 from conftest import DIALOG_LINES, HA, StubLLM, register_all
 from ovos_switchboard.core.verdict import Outcome, Verdict
 from ovos_switchboard.ovos.runtime import Settings, SwitchboardRuntime
-from ovos_switchboard.ovos.steps import ClassifierStep, EchoStep, ExactStep, LLMStep
+from ovos_switchboard.ovos.steps import ClassifierStep, EchoStep, ExactStep, LLMStep, PrefixStep
 
 
 HANGUP = "ovos-skill-hangup.oscillatelabsllc:decline"
@@ -198,4 +198,16 @@ def test_a_reloaded_pipeline_builds_when_core_is_already_ready(bus):
     ExactStep(bus, {}, runtime=rt)
     register_all(bus)
     assert wait_for(lambda: rt.stage("exact") is not None)
+    rt.shutdown()
+
+
+def test_wake_phrases_reach_the_exact_and_prefix_steps(bus):
+    rt = SwitchboardRuntime(bus, Settings(mode="active", retrain_debounce_s=3600, decision_log=False,
+                                          wake_phrases=("hey_mycroft",)), start=False)
+    exact, prefix = ExactStep(bus, {}, runtime=rt), PrefixStep(bus, {}, runtime=rt)
+    register_all(bus)
+    rt.rebuild()
+    assert run_pipeline([exact], "Hey Mycroft, turn on the desk lamp")[1].match_type == f"{HA}:turn.on"
+    name, match = run_pipeline([exact, prefix], "hey mycroft tell me the time oh and")
+    assert (name, match.match_type) == ("prefix", "ovos-skill-date-time.openvoiceos:what_time_is_it")
     rt.shutdown()

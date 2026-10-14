@@ -13,8 +13,9 @@ from ovos_switchboard.core.labels import LabelSelector
 from ovos_switchboard.core.options import ClassifierOptions, EchoOptions, LLMOptions
 from ovos_switchboard.core.shortlist import Shortlist
 from ovos_switchboard.core.slots import SlotExtractor
-from ovos_switchboard.core.stages import ClassifierStage, EchoStage, ExactStage, LabelResolver, LLMStage, resolved
+from ovos_switchboard.core.stages import ClassifierStage, EchoStage, ExactStage, LabelResolver, LLMStage, PrefixStage
 from ovos_switchboard.core.verdict import Outcome
+from ovos_switchboard.core.wake import wake_phrase_pattern
 
 
 DETAIL_KEYS = ("confidence", "top3", "label_how", "decline_class")
@@ -22,11 +23,12 @@ DETAIL_KEYS = ("confidence", "top3", "label_how", "decline_class")
 
 @dataclass(frozen=True)
 class RouterConfig:
-    """Options for every stage, plus the harness-only prefix rule."""
+    """Options for every stage. prefix_min_literal 0 turns the prefix stage off; no wake phrases strips none."""
     echo: EchoOptions = field(default_factory=EchoOptions)
     classifier: ClassifierOptions = field(default_factory=ClassifierOptions)
     llm: LLMOptions = field(default_factory=LLMOptions)
     prefix_min_literal: int = 0
+    wake_phrases: tuple = ()
     device_classes_only: bool = True
 
 
@@ -35,11 +37,14 @@ class Router:
     def __init__(self, device, schema, tools_doc, *, synthetic=(), llm=None, config=None):  # pylint: disable=R0913
         c = self.cfg = config or RouterConfig()
         self.resolver = LabelResolver(LabelSelector(device, schema), SlotExtractor(device, schema))
-        self.exact_layer = ExactLayer(device, schema)
+        exact_layer = ExactLayer(device, schema)
+        wake = wake_phrase_pattern(c.wake_phrases)
+        self.prefix = None
         if c.prefix_min_literal:
-            self.exact_layer.enable_prefix(c.prefix_min_literal)
+            exact_layer.enable_prefix(c.prefix_min_literal)
+            self.prefix = PrefixStage(exact_layer, self.resolver, wake)
         self.echo = EchoStage(c.echo)
-        self.exact = ExactStage(self.exact_layer, self.resolver)
+        self.exact = ExactStage(exact_layer, self.resolver, wake)
         classifier = Classifier.for_device(device, schema, synthetic, c.device_classes_only)
         self.classifier = ClassifierStage(classifier, self.resolver, c.classifier)
         self.llm = LLMStage(llm, Shortlist(tools_doc, device.examples), schema, self.resolver, c.llm) if llm else None
@@ -56,10 +61,10 @@ class Router:
         if v.intent:
             return self._as_decision(v)
         base = {"intent": None, "stage": "classifier", **{k: v.details[k] for k in DETAIL_KEYS if k in v.details}}
-        if self.cfg.prefix_min_literal:
-            owner = self.exact_layer.prefix_route(utterance.lower())
-            if owner:
-                return self._as_decision(resolved("prefix", owner, utterance, self.resolver), base)
+        if self.prefix:
+            v_prefix = self.prefix.decide(utterance, context)
+            if v_prefix.intent:
+                return self._as_decision(v_prefix, base)
         if self.llm and v.outcome is Outcome.PASS:
             return self._llm_decision(self.llm.decide(utterance, context), base)
         return base

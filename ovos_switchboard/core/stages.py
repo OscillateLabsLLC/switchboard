@@ -3,6 +3,7 @@ order guarantees a stage only sees what earlier stages passed on.
 
   EchoStage        the utterance repeats the assistant's recent speech -> decline
   ExactStage       a declared template phrase with exactly one owner -> dispatch
+  PrefixStage      a slot-free template phrase followed by more speech, one owner -> dispatch
   ClassifierStage  confident pick -> dispatch; the decline class -> decline or pass onward, per policy
   LLMStage         skill tool + addressee gate -> dispatch; ignore / failed gate / unreachable -> decline;
                    meta tools (ask_knowledge, stop, unsupported) -> pass, so the host's own stages answer
@@ -17,6 +18,7 @@ from ovos_switchboard.core.ports import LLMUnavailable
 from ovos_switchboard.core.schema import UNMAPPED
 from ovos_switchboard.core.tools import META_PREFIX
 from ovos_switchboard.core.verdict import Outcome, Verdict, declined, passed
+from ovos_switchboard.core.wake import strip_wake_phrase
 
 
 META_CANON = {"ask_knowledge": "knowledge.ask", "stop": "stop", "unsupported": None, "ignore": None}
@@ -73,15 +75,33 @@ class ExactStage:
     """Dispatches utterances that match one intent's declared templates."""
     name = "exact"
 
-    def __init__(self, exact_layer, resolver):
-        self.exact, self.resolver = exact_layer, resolver
+    def __init__(self, exact_layer, resolver, wake=None):
+        self.exact, self.resolver, self.wake = exact_layer, resolver, wake
 
     def decide(self, utterance, _context=None):
         """DISPATCH to the unique template owner, else PASS."""
+        utterance = strip_wake_phrase(utterance, self.wake)
         owner = self.exact.route(utterance.lower())
         if not owner:
             return passed(self.name, "no unique template owner")
         return resolved(self.name, owner, utterance, self.resolver, loose_slots=False, confidence=1.0)
+
+
+class PrefixStage:
+    """Dispatches trailing speech after a declared phrase ("make me laugh hey dad"): slot-free templates of
+    enough literal words, matched as a prefix. Measured in the harness but not yet validated on live traffic."""
+    name = "prefix"
+
+    def __init__(self, prefix_layer, resolver, wake=None):
+        self.prefix, self.resolver, self.wake = prefix_layer, resolver, wake
+
+    def decide(self, utterance, _context=None):
+        """DISPATCH to the unique owner of a matching template prefix, else PASS."""
+        utterance = strip_wake_phrase(utterance, self.wake)
+        owner = self.prefix.prefix_route(utterance.lower())
+        if not owner:
+            return passed(self.name, "no unique prefix owner")
+        return resolved(self.name, owner, utterance, self.resolver)
 
 
 class ClassifierStage:
