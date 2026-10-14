@@ -45,10 +45,12 @@ class ExactOptions:
     # Chosen on dev, confirmed on test (intent-eval exp_guard_rules.py, 2026-10-13).
     catch_all_yield: float = 0.8
     # Templates of 2+ intents matching: "none" lets the classifier decide (measured default); "core" / "user" let the
-    # one intent whose skills are all core (or all not core) win, if exactly one is. Entries of core_skills starting
-    # with "." are skill-id suffixes, the rest exact skill ids.
+    # one intent whose skills are all core (or all not core) win, if exactly one is. skill_priority, checked first,
+    # is an ordered list: the colliding intent of the earliest listed skill wins. Entries of both lists starting with
+    # "." are skill-id suffixes, the rest exact skill ids.
     collision_priority: str = "none"
     core_skills: tuple = (".openvoiceos", ".neongeckocom", "ocp")
+    skill_priority: tuple = ()
 
     def __post_init__(self):
         if self.collision_priority not in COLLISION_PRIORITIES:
@@ -57,7 +59,16 @@ class ExactOptions:
 
     def is_core(self, skill_id):
         """Whether a skill counts as core for collision_priority."""
-        return any(skill_id.endswith(c) if c.startswith(".") else skill_id == c for c in self.core_skills)
+        return any(_names(entry, skill_id) for entry in self.core_skills)
+
+    def priority_rank(self, skill_id):
+        """The skill's position in skill_priority, or None when it isn't listed."""
+        return next((i for i, entry in enumerate(self.skill_priority) if _names(entry, skill_id)), None)
+
+
+def _names(entry, skill_id):
+    """Whether a skill-list entry (".suffix" or an exact id) names the skill."""
+    return skill_id.endswith(entry) if entry.startswith(".") else skill_id == entry
 
 
 @dataclass(frozen=True)

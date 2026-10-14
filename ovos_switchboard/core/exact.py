@@ -1,9 +1,9 @@
 """Stage 2: deterministic template match, BEFORE anything trained.
 
 A phrase matching templates of exactly one owner routes to that owner, even an unmapped skill: it is a declared
-phrase. A collision between 2+ owners returns None so the classifier decides, unless ExactOptions.collision_priority
-names a group (core or user skills) with exactly one owner among them: a rule, not a guess. No stochastic matcher
-here, ever.
+phrase. A collision between 2+ owners returns None so the classifier decides, unless ExactOptions.skill_priority
+lists one of the colliding skills or collision_priority names a group (core or user skills) with exactly one owner
+among them: a rule, not a guess. No stochastic matcher here, ever.
 """
 import re
 
@@ -40,14 +40,28 @@ class ExactLayer:
         return owner, all(rx.pattern in self.catch_all for o, _, rx in hits if o == owner)
 
     def _prioritized(self, hits):
-        """The one colliding owner whose skills are all in the collision_priority group, else None."""
-        if self.options.collision_priority == "none":
-            return None
-        want_core = self.options.collision_priority == "core"
+        """The colliding owner skill_priority or collision_priority picks, else None."""
         skills = {}
         for owner, label, _ in hits:
             skills.setdefault(owner, set()).add(label.split(":", 1)[0])
-        preferred = [o for o, s in skills.items() if all(self.options.is_core(k) == want_core for k in s)]
+        return self._listed(skills) or self._grouped(skills)
+
+    def _listed(self, skills):
+        """The one owner holding the earliest skill_priority skill among the collision, else None."""
+        ranks = {}
+        for owner, ids in skills.items():
+            listed = [r for r in map(self.options.priority_rank, ids) if r is not None]
+            if listed:
+                ranks[owner] = min(listed)
+        winners = [o for o, r in ranks.items() if r == min(ranks.values())]
+        return winners[0] if len(winners) == 1 else None
+
+    def _grouped(self, skills):
+        """The one owner whose skills are all in the collision_priority group, else None."""
+        if self.options.collision_priority == "none":
+            return None
+        want_core = self.options.collision_priority == "core"
+        preferred = [o for o, ids in skills.items() if all(self.options.is_core(k) == want_core for k in ids)]
         return preferred[0] if len(preferred) == 1 else None
 
     def enable_prefix(self, min_literal):

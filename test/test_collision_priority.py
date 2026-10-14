@@ -2,7 +2,7 @@ import pytest
 
 from ovos_switchboard.core.device import Device
 from ovos_switchboard.core.exact import ExactLayer
-from ovos_switchboard.core.options import ExactOptions
+from ovos_switchboard.core.options import ExactOptions, options_from
 from ovos_switchboard.core.schema import Schema
 
 
@@ -36,6 +36,26 @@ def test_collision_priority_picks_the_one_owner_in_its_group(device, priority, i
 
 def test_no_owner_wins_when_the_group_has_two(device):
     assert owner(device, collision_priority="user", core_skills=()) is None  # both count as user
+
+
+@pytest.mark.parametrize("skill_priority, intent", [((HA,), "device.off"), ((ALERTS, HA), "timer.cancel"),
+                                                    ((".oscillatelabsllc",), "device.off")])
+def test_the_earliest_listed_skill_wins(device, skill_priority, intent):
+    assert owner(device, skill_priority=skill_priority) == intent
+
+
+def test_the_list_overrides_the_group(device):
+    assert owner(device, skill_priority=(HA,), collision_priority="core") == "device.off"
+
+
+def test_an_unlisted_collision_falls_back_to_the_group(device):
+    assert owner(device, skill_priority=("skill-other.example",), collision_priority="core") == "timer.cancel"
+    assert owner(device, skill_priority=("skill-other.example",)) is None
+
+
+def test_skill_priority_reads_from_config():
+    options = options_from(ExactOptions, {"skill_priority": ["ocp", HA]})  # mycroft.conf gives a list
+    assert options.priority_rank(HA) == 1 and options.priority_rank(ALERTS) is None
 
 
 def test_core_skills_take_suffixes_and_exact_ids():
