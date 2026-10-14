@@ -28,7 +28,9 @@ Steps never act on each other's verdicts. Pipeline order already means a step on
 
 A "not for me" utterance that was passed on and then finds no LLM tool (`unsupported`) is declined, not handed to the stock steps after Switchboard.
 
-**High-risk intents** (unlock, open covers, shutdown, clear data) are never acted on until a confirm flow exists (`high_risk: "defer"`). A held utterance is declined through Hangup with reason `held_high_risk` and the held intent recorded, so neither later Switchboard steps nor the stock steps after them (Adapt, Padatious) can run it. It is silent for now; asking for confirmation belongs to the confirm flow, not to Hangup.
+**High-risk intents** (unlock, open covers, shutdown, clear data) are never acted on directly. A held utterance is consumed, so neither later Switchboard steps nor the stock steps after them (Adapt, Padatious) can run it:
+- `high_risk: "defer"` (default): declined silently through Hangup, with reason `held_high_risk` and the held intent recorded.
+- `high_risk: "confirm"`: handed to the [Doublecheck](https://github.com/OscillateLabsLLC/doublecheck) skill, which repeats the request back ("You said: unlock the front door. Should I go ahead?") and runs exactly the held intent only on a clear yes. Requires Doublecheck. Planned as the default once it has been tried live ([design](docs/confirm-flow.md)).
 
 ## Pipeline order (recommended)
 
@@ -89,7 +91,8 @@ Shared settings go under `intents.switchboard`. Each step's settings go under it
 | shared | `mode` | `shadow` | `shadow` logs verdicts and never matches; `active` acts |
 | shared | `lang` | `en-us` | language the stages serve; other languages pass |
 | shared | `hangup_skill_id` | `ovos-skill-hangup.oscillatelabsllc` | where declines go |
-| shared | `high_risk` | `defer` | `defer` or `allow` |
+| shared | `high_risk` | `defer` | `defer` (hold silently), `confirm` (ask through Doublecheck) or `allow` (testing only); anything else is a startup error |
+| shared | `confirm_skill_id` | `ovos-skill-doublecheck.oscillatelabsllc` | where held high-risk requests go with `high_risk: "confirm"` |
 | shared | `retrain_debounce_s` | 5 | quiet time after registration changes before stages rebuild |
 | shared | `delegate_skills` | `["ocp"]` | skills whose own pipeline step must dispatch them; a Switchboard verdict for one passes to that step |
 | shared | `wake_phrases` | the listener's `hotwords` with `listen: true` | stripped from the start of an utterance before template matching |
@@ -156,7 +159,7 @@ The original plan was seven stages, including a shared sentence encoder, GLiNER 
 
 - **No trained reranker yet.** The shortlist plus the gated LLM covers the cases a reranker would decide, and no logs have shown misroutes that need one. It stays on the list, to be earned with data.
 - **Template slot extraction instead of GLiNER.** Most slots come straight out of the matched template; typed parsing and entity resolution stay in the skills.
-- **High-risk intents are held** until a confirm flow exists, rather than relying on a confidence threshold. Wrong high-risk picks reached 0.994 confidence, so no threshold could separate them.
+- **High-risk intents are held or confirmed**, rather than trusted to a confidence threshold. Wrong high-risk picks reached 0.994 confidence, so no threshold could separate them.
 - **Within OVOS:**
   - The LLM step runs ahead of common_qa so overheard questions are declined, not answered.
   - The echo step runs ahead of stop and converse.
