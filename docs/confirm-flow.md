@@ -24,12 +24,12 @@ High-risk intents (unlock, open covers, shutdown, clear data; `risk: high` in th
 3. **The confirm skill asks, using the user's own words.** "You said: unlock the front door. Should I go ahead?" The frame is a translatable `.dialog` file, and the quoted utterance needs no translation. This avoids writing a spoken description for every high-risk intent in every language.
 4. **It reads the answer with OVOS's own yes/no handling** (`ask_yesno`: localized yes/no vocabularies, one short listening window).
    - **On "yes":** it re-emits the held intent the way ovos-core's intent service does on a match (`ovos_core/intent_services/service.py`):
-    - a reply to the original utterance message, which keeps its context and session;
-    - named `skill_id:intent_name`;
-    - data = the original message data merged with the match data, plus `utterance` and `lang`;
-    - `skill_id` in the context.
+     - a reply to the original utterance message, which keeps its context and session;
+     - named `skill_id:intent_name`;
+     - data = the original message data merged with the match data, plus `utterance` and `lang`;
+     - `skill_id` in the context.
 
-    The target skill can't tell the difference. The confirm skill therefore has to carry the original message's data and context, not just the match.
+     The target skill can't tell the difference. The confirm skill therefore has to carry the original message's data and context, not just the match.
    - **On "no", silence, a timeout or anything unclear:** it says a short "OK, I won't" (`.dialog`) and does nothing.
 5. **Fail safe:**
    - the held action is kept only in memory, only for that one question, and is dropped on timeout;
