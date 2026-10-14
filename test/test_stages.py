@@ -108,6 +108,7 @@ def test_llm_keyword_tool_gets_vocab_match_data(parts):
     (StubLLM("homeassistant__turn_off", p_yes=0.2), Outcome.DECLINE, "addressee_gate"),
     (StubLLM("ignore"), Outcome.DECLINE, "ignore"),
     (StubLLM(fail=True), Outcome.DECLINE, "llm_unavailable"),
+    (StubLLM("easter_eggs_joke", {"query": "algo"}, invented=True), Outcome.DECLINE, "unknown_tool"),
     (StubLLM("ask_knowledge", {"question": "why is the sky blue"}), Outcome.PASS, "llm chose ask_knowledge"),
 ])
 def test_llm_outcomes(parts, llm, outcome, reason):
@@ -126,6 +127,13 @@ def test_router_composes_stages_in_measured_order(parts):
     assert r.route("turn on the desk lamp")["stage"] == "exact"
     assert r.route("whats the time right now")["stage"] == "classifier"
     assert r.route("i turned the lamp on for you", {"gap_s": 10})["stage"] == "llm"
+
+
+def test_router_declines_an_invented_tool(parts):
+    r = Router(parts.device, parts.schema, parts.tools, synthetic=parts.synthetic,
+               llm=StubLLM("easter_eggs_joke", invented=True))
+    d = r.route("i turned the lamp on for you", {"gap_s": 10})
+    assert (d["intent"], d["stage"], d["llm_tool"]) == (None, "llm", "easter_eggs_joke")
 
 
 def test_classifier_state_round_trips_exactly(parts):
