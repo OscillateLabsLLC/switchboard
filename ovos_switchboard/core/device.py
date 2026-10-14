@@ -12,7 +12,7 @@ import re
 import string
 from dataclasses import dataclass, field
 
-from ovos_switchboard.core.templates import MAX_PER_LINE, SLOT, clean, expand, expansions, template_regex
+from ovos_switchboard.core.templates import MAX_PER_LINE, SLOT, clean, compiles, expand, expansions, template_regex
 
 
 MAX_KEYWORD_EXAMPLES = 40
@@ -45,12 +45,15 @@ class Device:
                 if isinstance(defs, list) for d in defs]
 
     def template_entries(self, definitions=None):
-        """(label, line) for every template sample in this device's language."""
+        """(label, line) for every well-formed template sample in this device's language. A malformed line (an
+        unclosed group: gl-ES ovos-skill-news ships 20) is skipped, so one skill's typo can't stop the exact layer
+        from building."""
         for skill_id, defs in (definitions or self.definitions).items():
             for d in defs if isinstance(defs, list) else []:
                 if d["lang"].lower() == self.lang and d["method"] == "template":
                     for line in d["definition"].get("samples") or []:
-                        yield f"{skill_id}:{d['intent_name']}", line
+                        if compiles(line):
+                            yield f"{skill_id}:{d['intent_name']}", line
 
     @classmethod
     def from_files(cls, manifest, examples, lang="en-us", shared_examples=(), shared_manifests=()):
@@ -79,7 +82,7 @@ def derive_examples(definitions, lang):
             label = f"{skill_id}:{d['intent_name']}"
             if d["method"] == "template":
                 rows = [(ex, sorted(set(SLOT.findall(ex))))
-                        for line in d["definition"].get("samples") or [] for ex in expansions(line)]
+                        for line in d["definition"].get("samples") or [] if compiles(line) for ex in expansions(line)]
             else:
                 rows = [(ex, []) for ex in d["definition"].get("keyword_examples") or []]
             for ex, slots in rows:
