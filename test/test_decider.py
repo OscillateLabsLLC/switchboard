@@ -84,3 +84,21 @@ def test_router_runs_the_decider_after_the_classifier(parts):
     d = r.route("i turned the lamp on for you", {**COLD, "gap_s": 10})
     assert (d["stage"], d["label"], d["decider_choice"]) == ("decider", f"{HA}:turn.off", "homeassistant__turn_off")
     assert r.route("turn on the desk lamp")["stage"] == "exact"
+
+
+def test_block_mask_follows_the_trained_layout():
+    torch = pytest.importorskip("torch")
+    from ovos_switchboard.adapters.decider_model import OPTION, QUESTION, STATE, block_mask
+    kinds = torch.tensor([[STATE, STATE, QUESTION, OPTION, -1]])
+    allow = block_mask(kinds, torch.arange(5)[None], None)[0, 0]
+    assert allow[0].tolist() == [True, True, False, False, False]   # state sees only state
+    assert allow[2].tolist() == [True, True, True, False, False]    # question sees state and question
+    assert allow[3].tolist() == [True, True, True, True, False]     # option sees all three
+    assert allow[4].tolist() == [False, False, False, False, True]  # padding sees only itself
+    assert not block_mask(kinds, torch.arange(5)[None], 1)[0, 0, 3, 0]  # outside the local window
+
+
+def test_option_text_is_key_and_description():
+    from ovos_switchboard.adapters.decider_model import option_text
+    assert option_text("stop", "stop what the assistant is doing") == "stop: stop what the assistant is doing"
+    assert option_text("stop", "") == "stop"
