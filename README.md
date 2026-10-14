@@ -101,6 +101,7 @@ Shared settings go under `intents.switchboard`. Each step's settings go under it
 | shared | `decision_log`, `decision_log_path` | on, `$XDG_STATE_HOME/switchboard/decisions.jsonl` | JSONL of every verdict and OVOS's actual outcome. Holds household speech; stays local |
 | echo | `echo_run_min` | 4 | contiguous words shared with recent assistant speech |
 | exact | `catch_all_yield` | 0.8 | classifier confidence in another intent that overrules a catch-all template; 0 never overrules. Without the classifier step, catch-alls always dispatch |
+| exact | `collision_priority`, `core_skills` | `none`, `[".openvoiceos", ".neongeckocom", "ocp"]` | when templates of 2+ intents match: `none` lets the classifier decide; `core` / `user` let the one colliding intent whose skills are all core (or all not core) win. `core_skills` entries starting with `.` are skill-id suffixes, the rest exact ids. Measured: `user` fixes "turn off the lights" (alerts' `turn off {alertkind}` vs Home Assistant) without an LLM but sends "turn on grandma mode" to Home Assistant; `core` only hurt |
 | prefix | `prefix_min_literal` | 3 | literal words a slot-free template needs to match as a prefix |
 | classifier | `threshold` | 0.5 | confidence needed to dispatch |
 | classifier | `route_decline_class` | `active` | `never` / `active` / `always` |

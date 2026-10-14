@@ -187,8 +187,12 @@ class ExactStep(SwitchboardStep):
 
     def setup(self):
         self.options = options_from(ExactOptions, self.config)
-        self.runtime.provide(self.name, lambda b: ExactStage(ExactLayer(b.device, b.schema), b.resolver, b.wake,
-                                                             ranker=self.rank, options=self.options))
+        self.runtime.provide(self.name, self.build)
+
+    def build(self, b):
+        """The exact stage for the current registrations."""
+        return ExactStage(ExactLayer(b.device, b.schema, options=self.options), b.resolver, b.wake,
+                          ranker=self.rank, options=self.options)
 
     def rank(self, utterance):
         """The classifier's ranking, or None while it trains or when the classifier step isn't installed."""
