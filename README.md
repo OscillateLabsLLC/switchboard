@@ -2,7 +2,7 @@
 
 Intent routing for OVOS as a set of pipeline steps. It tries deterministic exact matches first, then a small classifier, then an LLM with tools derived from the skills' own registrations. When speech wasn't meant for the assistant, it stays silent.
 
-Each stage was measured before it was adopted, on the [intent-eval](https://forgejo.graywind.org/graywind/intent-eval) harness, using real household traffic from a Neon Hub and an OVOS Mac. On held-out Hub traffic, Switchboard answered 90.6% of requests correctly versus 42.2% for stock OVOS. On overheard speech, it acted on 7 of 71 utterances where Neon acted on all 71. `scripts/check_harness.py` shows that this package's stages reproduce the harness's measured decisions exactly.
+Each stage was measured before it was adopted, on the [intent-eval](https://forgejo.graywind.org/graywind/intent-eval) harness, using real household traffic from a Neon Hub and an OVOS Mac. On held-out Hub traffic, Switchboard answered 84.4% of requests correctly with its default settings, versus 42.2% for stock OVOS. Replaying the Hub's history, it acted on 7 of 71 overheard utterances where Neon acted on all 71. [docs/evaluation.md](docs/evaluation.md) covers what it does well and badly, other languages, scale, and which configuration to use with or without an LLM. `scripts/check_harness.py` shows that this package's stages reproduce the harness's measured decisions exactly.
 
 ## The steps
 
