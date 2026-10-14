@@ -42,6 +42,7 @@ HANGUP_INTENT = "decline"  # interface contract with Hangup (HangupSkill.DECLINE
 SHARED_SECTION = "switchboard"
 SYNTHETIC_FILE = "synthetic_examples_slotted.jsonl"
 HANGUP_DETAIL_KEYS = ("confidence", "p_addressed", "llm_tool", "echo_run")
+OVERHEARD_REASON = "decline_class_unsupported"
 HELD_REASON = "held_high_risk"  # silent until a confirm flow exists; the confirm flow, not Hangup, will ask
 
 
@@ -123,6 +124,13 @@ class SwitchboardStep(PipelinePlugin):
 
     def _act(self, verdict, turn, ms):
         if verdict.outcome is Outcome.PASS:
+            if verdict.details.get("decline_class"):
+                turn.record.decline_class_passed = True
+            if turn.record.decline_class_passed and verdict.details.get("llm_tool") == "unsupported":
+                # "Not for me" got an exception only because the assistant had just spoken, and the LLM found
+                # nothing to do: passing on handed overheard speech to whatever stock step came next (live: m2v).
+                self._log(verdict, "decline", turn, ms, OVERHEARD_REASON)
+                return self._hangup(verdict, turn.utterance, OVERHEARD_REASON)
             self._log(verdict, "pass", turn, ms)
             return None
         if verdict.outcome is Outcome.DECLINE:

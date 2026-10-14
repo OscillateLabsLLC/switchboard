@@ -144,6 +144,32 @@ def test_first_build_skips_the_debounce_and_answers_readiness(bus, tmp_path):
     assert replies == [False, True], "built well inside the 3600 s debounce, and only then ready"
 
 
+def unsupported_after(runtime, classifier_verdict, utterance="can you pass me the salt"):
+    """Run classifier -> llm -> stock with scripted verdicts; the LLM finds no tool."""
+    classifier, llm = ClassifierStep(runtime.bus, {}, runtime=runtime), LLMStep(runtime.bus, LLM_CONFIG,
+                                                                                runtime=runtime)
+    stock = StockStep()
+    runtime.rebuild()
+    runtime.stages["classifier"] = ScriptedStage(classifier_verdict)
+    runtime.stages["llm"] = ScriptedStage(Verdict("llm", Outcome.PASS, reason="llm chose unsupported",
+                                                  details={"llm_tool": "unsupported", "p_addressed": 1.0}))
+    return run_pipeline([classifier, llm, stock], utterance), stock
+
+
+def test_not_for_me_plus_no_tool_declines_instead_of_reaching_stock_steps(runtime):
+    """Live warm-context trial: "can you pass me the salt" leaked to stock m2v (missed_alerts)."""
+    (name, match), stock = unsupported_after(runtime, Verdict(
+        "classifier", Outcome.PASS, reason="decline class, assistant active", details={"decline_class": True}))
+    assert (name, match.match_type, match.match_data["reason"]) == ("llm", HANGUP, "decline_class_unsupported")
+    assert stock.seen == []
+
+
+def test_an_unsupported_request_the_classifier_was_unsure_about_still_passes(runtime):
+    (name, _), stock = unsupported_after(runtime, Verdict("classifier", Outcome.PASS, reason="low confidence"),
+                                         "book me a flight to denver")
+    assert name == "stock" and stock.seen == ["book me a flight to denver"]
+
+
 def test_llm_step_dispatches_declines_and_passes(runtime):
     llm = LLMStep(runtime.bus, LLM_CONFIG, runtime=runtime)
     runtime.rebuild()
