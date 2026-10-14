@@ -25,6 +25,8 @@ Steps never act on each other's verdicts. Pipeline order already means a step on
 - `always`: always passes on.
 - `never`: always declines on the spot.
 
+A "not for me" utterance that was passed on and then finds no LLM tool (`unsupported`) is declined, not handed to the stock steps after Switchboard.
+
 **High-risk intents** (unlock, open covers, shutdown, clear data) are never acted on until a confirm flow exists (`high_risk: "defer"`). A held utterance is declined through Hangup with reason `held_high_risk` and the held intent recorded, so neither later Switchboard steps nor the stock steps after them (Adapt, Padatious) can run it. It is silent for now; asking for confirmation belongs to the confirm flow, not to Hangup.
 
 ## Pipeline order (recommended)

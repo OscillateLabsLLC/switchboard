@@ -101,6 +101,7 @@ class UtteranceRecord:
     """What the steps have settled about one utterance round."""
     held: bool = False     # a step held a high-risk intent: later steps must not act on this utterance
     delegated: bool = False  # a step handed it to its skill's own pipeline step: later steps must not act either
+    decline_class_passed: bool = False  # the classifier said "not for me" but passed it on (assistant active)
     settled_by: str = ""   # shadow mode: the first step with a decisive verdict
 
 
