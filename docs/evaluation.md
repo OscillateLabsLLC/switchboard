@@ -30,6 +30,25 @@ Every number here comes from the [intent-eval](https://forgejo.graywind.org/gray
 
 The README's earlier 90.6% Hub figure used the opt-in `always` decline policy. That policy fails the false-accept limit on dev (27.3% against 25%), so the default numbers above are the fair ones.
 
+## How it fails: by doing nothing, not by doing the wrong thing
+
+Real requests on the test split, split by outcome:
+
+| | right | wrong action | did nothing |
+|---|---|---|---|
+| stock OVOS, Hub | 42.2% | **56.2%** | 1.6% |
+| stock OVOS, Mac | 69.8% | 28.6% | 1.6% |
+| Switchboard, no LLM, Hub | 76.6% | **1.6%** | 21.9% |
+| Switchboard, no LLM, Mac | 77.8% | 9.5% | 12.7% |
+| Switchboard + decider, Hub | 79.7% | 1.6% | 18.8% |
+| Switchboard + decider, Mac | 81.0% | 9.5% | 9.5% |
+| Switchboard + 14B LLM, Hub | 84.4% | 1.6% | 14.1% |
+| Switchboard + 14B LLM, Mac | 87.3% | 11.1% | 1.6% |
+
+Stock OVOS mostly fails by doing the wrong thing. Switchboard mostly fails by doing nothing, which a user can simply
+repeat or rephrase. An LLM or the decider turns more of the "did nothing" rows into right answers. On the Mac, wrong
+actions stay around 10% at every tier, which is worth a closer look.
+
 ## What it does well
 
 - **Declared phrases route deterministically.** Exact matching runs first and never guesses between colliding templates.
@@ -80,9 +99,13 @@ Peak memory is the experiment process, which builds two stacks: an upper bound, 
 
 ## Choosing a configuration
 
+**Recommended:** the LLM step with a model on a small GPU or an Apple-silicon Mac. Without one, Switchboard still
+improves on stock OVOS; the decider step is an experimental middle ground for users who want to try it.
+
 | Situation | Configuration | What you get (test) |
 |---|---|---|
 | **No LLM** (CPU only, offline) | Leave out the LLM step; set `route_decline_class` to `never` | Real Hub 76.6% (beats stock, p = 2.7e-5), Mac 77.8% (not significant). Magic 95–97%, below the 98% bar. Most cautious: acts on 7.5–10% of non-commands |
+| **No LLM, decider (experimental)** | The decider step (`[decider]` extra), tasksource-decider-nano (150M) on the CPU | Real Hub 79.7% (p = 8e-6 vs stock), Mac 81.0% (not significant). Same false accepts as no LLM. About 80 ms per decision on the CPU, no LLM host. The gain over no LLM is a few rows: not yet significant |
 | **Small local LLM** | Qwen3-1.7B (1.84 GB file) on LM Studio or similar, `shortlist_k` 12 | Passes every criterion. Real Hub 81.2%, Mac 84.1%, non-commands 10–12.5%. LLM route p50 965 ms, gate 114 ms (M3 Max Metal) |
 | **Small local LLM, latency first** | Same, `shortlist_k` 6 | Route p50 623 ms (-35%). About 1.5 points lower on real traffic, and magic 97.1% on the Hub, below the 98% bar |
 | **GPU on the LAN** | Qwen3-14B-AWQ on vLLM (RTX 3090) | Best measured: real Hub 84.4%, Mac 87.3%, non-commands 12.5%. About 400–470 ms per fresh LLM decision |
