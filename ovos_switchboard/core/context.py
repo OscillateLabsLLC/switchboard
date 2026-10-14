@@ -31,14 +31,15 @@ class SpeechContext:
         self.lock = threading.Lock()
         self.spoken = defaultdict(lambda: deque(maxlen=options.speech_lines_max))  # session -> (ts, words)
 
-    def heard_assistant(self, text, session_id="default", ts=None):
-        """Remember one line the assistant said, dropping lines past the history."""
+    def heard_assistant(self, text, session_id="default", ts=None, echoable=True):
+        """Remember one line the assistant said, dropping lines past the history. A line that isn't echoable still
+        counts as the assistant speaking (gap_s), but its words can't make an utterance an echo."""
         if not text:
             return
         ts = self.clock() if ts is None else ts
         with self.lock:
             lines = self.spoken[session_id]
-            lines.append((ts, norm(text).split()))
+            lines.append((ts, norm(text).split() if echoable else []))
             while lines and ts - lines[0][0] > self.options.speech_history_s:
                 lines.popleft()
 

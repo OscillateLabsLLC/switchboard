@@ -34,6 +34,8 @@ except ImportError:  # pragma: no cover
     LOG = logging.getLogger("switchboard")
 
 MODES = ("shadow", "active")
+# "defer": hold silently through Hangup; "confirm": Doublecheck asks first; "allow": act (testing only)
+HIGH_RISK_POLICIES = ("defer", "confirm", "allow")
 SPEAK_TOPICS = ("speak", "ovos.utterance.speak")
 OUTCOME_TOPICS = ("ovos.intent.matched", "ovos.intent.unmatched", "complete_intent_failure")
 SKILLS_INITIALIZED = "mycroft.skills.initialized"
@@ -47,7 +49,8 @@ class Settings:  # pylint: disable=too-many-instance-attributes  # one field per
     mode: str = "shadow"
     lang: str = "en-us"
     hangup_skill_id: str = "ovos-skill-hangup.oscillatelabsllc"
-    high_risk: str = "defer"            # "defer": never act on high-risk intents (no confirm flow yet); "allow"
+    confirm_skill_id: str = "ovos-skill-doublecheck.oscillatelabsllc"
+    high_risk: str = "defer"            # one of HIGH_RISK_POLICIES
     retrain_debounce_s: float = 5.0
     bus_timeout_s: float = 10.0         # each startup query to ovos-core (intent sync, skills list)
     record_ttl_s: float = 30.0          # must outlast one full pipeline round
@@ -68,6 +71,8 @@ class Settings:  # pylint: disable=too-many-instance-attributes  # one field per
     def __post_init__(self):
         if self.mode not in MODES:
             raise ValueError(f"switchboard mode must be one of {MODES}, got {self.mode!r}")
+        if self.high_risk not in HIGH_RISK_POLICIES:  # a typo must not quietly mean "allow"
+            raise ValueError(f"high_risk must be one of {HIGH_RISK_POLICIES}, got {self.high_risk!r}")
 
     @classmethod
     def from_config(cls, config):
@@ -145,6 +150,7 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
         self.timer, self.timer_lock = None, threading.Lock()
         self.rebuild_lock = threading.Lock()
         self.skills_ready = threading.Event()  # rebuilding mid-load trains on a partial set, so wait for core
+        self.confirm_loaded = None  # None: unknown (trust the config); False: hold silently instead of asking
         self.registry = IntentRegistry(bus, on_change=self.schedule)
         self.registry.add_ocp_templates(settings.lang)
         for topic in SPEAK_TOPICS:
@@ -261,7 +267,7 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
         self.skills_ready.set()
         # Everything has registered by now, so the debounce would only make "I am ready" wait longer.
         self.schedule(delay=0)
-        self._check_hangup()
+        self._check_skills()
 
     def ready(self):
         """Whether every provided stage has been built at least once."""
@@ -271,18 +277,27 @@ class SwitchboardRuntime:  # pylint: disable=too-many-instance-attributes  # the
         # OVOS readiness protocol: ovos-skill-boot-finished asks each name in its ready_settings.
         self.bus.emit(message.response({"status": self.ready()}))
 
-    def _check_hangup(self):
+    def _check_skills(self):
         from ovos_bus_client.message import Message
         reply = self.bus.wait_for_response(Message("ovos.skills.list", {}), "ovos.skills.list.response",
                                            timeout=self.settings.bus_timeout_s)
-        if reply and reply.data.get("ok"):
-            loaded = {sk["skill_id"] for sk in reply.data.get("skills") or []}
-            if self.settings.hangup_skill_id not in loaded:
-                LOG.error("%s is not loaded: Switchboard's declines will go nowhere. Install the Hangup skill.",
-                          self.settings.hangup_skill_id)
+        if not (reply and reply.data.get("ok")):
+            return
+        loaded = {sk["skill_id"] for sk in reply.data.get("skills") or []}
+        if self.settings.hangup_skill_id not in loaded:
+            LOG.error("%s is not loaded: Switchboard's declines will go nowhere. Install the Hangup skill.",
+                      self.settings.hangup_skill_id)
+        self.confirm_loaded = self.settings.confirm_skill_id in loaded
+        if self.settings.high_risk == "confirm" and not self.confirm_loaded:
+            LOG.error("%s is not loaded: high-risk requests will be held silently through Hangup instead of asked "
+                      "about. Install the Doublecheck skill and restart.", self.settings.confirm_skill_id)
 
     def _on_speak(self, message):
-        self.speech.heard_assistant(message.data.get("utterance", ""), session_of(message))
+        # Doublecheck quotes the user ("I think you said: <request>"), so its words would make the user asking again
+        # look like an echo. Its question is answered inside get_response, never through the pipeline.
+        speaker = message.context.get("skill_id") or (message.data.get("meta") or {}).get("skill")
+        self.speech.heard_assistant(message.data.get("utterance", ""), session_of(message),
+                                    echoable=speaker != self.settings.confirm_skill_id)
 
     def _on_outcome(self, message):
         data = message.data

@@ -9,8 +9,9 @@
   ovos-switchboard-decider-pipeline-plugin     a local typed-decision model picks a shortlisted intent (no LLM host)
 
 A step turns its stage's verdict into OVOS terms: DISPATCH -> IntentHandlerMatch to the skill, DECLINE -> a match
-for the Hangup skill (silent), PASS -> None. Each step has its own config section (`intents.<pipeline id>`) over the
-shared `intents.switchboard` section. mode "shadow" logs verdicts and never matches.
+for the Hangup skill (silent), PASS -> None. A high-risk DISPATCH is held: Hangup again, or with high_risk "confirm"
+a match for the Doublecheck skill, which asks first. Each step has its own config section (`intents.<pipeline id>`)
+over the shared `intents.switchboard` section. mode "shadow" logs verdicts and never matches.
 """
 import threading
 import time
@@ -46,7 +47,10 @@ SHARED_SECTION = "switchboard"
 SYNTHETIC_FILE = "synthetic_examples_slotted.jsonl"
 HANGUP_DETAIL_KEYS = ("confidence", "p_addressed", "llm_tool", "echo_run", "decider_choice", "decider_p")
 OVERHEARD_REASON = "decline_class_unsupported"
-HELD_REASON = "held_high_risk"  # silent until a confirm flow exists; the confirm flow, not Hangup, will ask
+HELD_REASON = "held_high_risk"
+# Interface contract with Doublecheck (DoublecheckSkill.CONFIRM_INTENT, HELD_KEYS): it asks, and on "yes" replays
+# held_label with held_match_data merged into the original message data, as ovos-core would have dispatched it.
+CONFIRM_INTENT = "confirm"
 
 
 def shared_config():
@@ -139,12 +143,8 @@ class SwitchboardStep(PipelinePlugin):
         if verdict.outcome is Outcome.DECLINE:
             self._log(verdict, "decline", turn, ms)
             return self._hangup(verdict, turn.utterance)
-        if self.runtime.settings.high_risk == "defer" and self.runtime.schema.risk(verdict.intent) == "high":
-            # Consumed, not passed: returning None would let a later stock step (Adapt, Padatious) run it anyway.
-            turn.record.held = True
-            self._log(verdict, "held", turn, ms, HELD_REASON)
-            return self._hangup(verdict, turn.utterance, HELD_REASON,
-                                {"held_intent": verdict.intent, "held_label": verdict.label})
+        if self.runtime.settings.high_risk != "allow" and self.runtime.schema.risk(verdict.intent) == "high":
+            return self._hold(verdict, turn, ms)
         skill_id = verdict.label.split(":", 1)[0]
         if skill_id in self.runtime.settings.delegate_skills:
             # Its own pipeline step (ocp-high, placed after the classifier) re-matches it with the data it needs.
@@ -161,6 +161,19 @@ class SwitchboardStep(PipelinePlugin):
         return IntentHandlerMatch(match_type=f"{skill_id}:{HANGUP_INTENT}", skill_id=skill_id, utterance=utterance,
                                   match_data={"reason": reason or verdict.reason, "stage": verdict.stage, **details,
                                               **(extra or {})})
+
+    def _hold(self, verdict, turn, ms):
+        """Consumed, not passed: returning None would let a later stock step (Adapt, Padatious) run it anyway."""
+        turn.record.held = True
+        self._log(verdict, "held", turn, ms, HELD_REASON)
+        held = {"held_intent": verdict.intent, "held_label": verdict.label}
+        # A dispatch to a skill that isn't loaded is silent too, but leaves ovos-core waiting out its handler timeout.
+        if self.runtime.settings.high_risk != "confirm" or self.runtime.confirm_loaded is False:
+            return self._hangup(verdict, turn.utterance, HELD_REASON, held)
+        skill_id = self.runtime.settings.confirm_skill_id
+        return IntentHandlerMatch(match_type=f"{skill_id}:{CONFIRM_INTENT}", skill_id=skill_id,
+                                  utterance=turn.utterance,
+                                  match_data={**held, "held_match_data": dict(verdict.match_data)})
 
     def _log(self, verdict, action, turn, ms, reason=None):
         self.runtime.log.write({

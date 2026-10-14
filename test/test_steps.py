@@ -11,6 +11,7 @@ from ovos_switchboard.ovos.steps import ClassifierStep, DeciderStep, EchoStep, E
 
 
 HANGUP = "ovos-skill-hangup.oscillatelabsllc:decline"
+DOUBLECHECK = "ovos-skill-doublecheck.oscillatelabsllc"
 LLM_CONFIG = {"url": "http://127.0.0.1:1/v1/chat/completions", "model": "m"}
 
 
@@ -77,6 +78,19 @@ def test_echo_step_needs_no_registrations(bus):
     assert run_pipeline([echo], "turn off the porch light") == (None, None)
 
 
+def test_doublechecks_quote_of_the_user_is_not_echo(bus):
+    """Live trial: "what time is it" again after "I think you said: what time is it..." was declined as echo."""
+    rt = SwitchboardRuntime(bus, Settings(mode="active", decision_log=False), start=False)
+    echo = EchoStep(bus, {}, runtime=rt)
+    question = "I think you said: what time is it. Should I do that?"
+    context = {**utterance_message().context, "skill_id": DOUBLECHECK}
+    bus.emit(Message("speak", {"utterance": question}, context))
+    assert run_pipeline([echo], "what time is it") == (None, None)
+    assert rt.context("what time is it", "default")["gap_s"] is not None, "it still counts as the assistant speaking"
+    bus.emit(Message("speak", {"utterance": question}, utterance_message().context))
+    assert run_pipeline([echo], "what time is it")[1].match_data["reason"] == "echo"
+
+
 def test_full_pipeline_declines_assistant_speech_at_the_classifier(runtime):
     steps = [EchoStep(runtime.bus, {}, runtime=runtime), ExactStep(runtime.bus, {}, runtime=runtime),
              ClassifierStep(runtime.bus, {}, runtime=runtime)]
@@ -110,6 +124,57 @@ def test_high_risk_hold_consumes_the_utterance(runtime, tmp_path):
     assert stock.seen == [], "nothing after Switchboard saw the held utterance"
     held = [r for r in records(tmp_path) if r["action"] == "held"]
     assert [(r["step"], r["reason"]) for r in held] == [("exact", "held_high_risk")]
+
+
+@pytest.fixture(name="confirming")
+def confirming_fixture(bus, tmp_path):
+    rt = SwitchboardRuntime(bus, Settings(mode="active", high_risk="confirm", retrain_debounce_s=3600,
+                                          decision_log_path=str(tmp_path / "decisions.jsonl")),
+                            dialog_lines=lambda lang: DIALOG_LINES, start=False)
+    register_all(bus)
+    yield rt
+    rt.shutdown()
+
+
+def hold_unlock(rt):
+    exact, stock = ExactStep(rt.bus, {}, runtime=rt), StockStep()
+    rt.rebuild()
+    rt.stages["exact"] = ScriptedStage(Verdict("exact", Outcome.DISPATCH, "lock.unlock", f"{HA}:unlock",
+                                               {"entity": "front door"}, {}))
+    name, match = run_pipeline([exact, stock], "unlock the front door")
+    assert name == "exact" and stock.seen == [], "nothing after Switchboard saw the held utterance"
+    return match
+
+
+@pytest.mark.parametrize("loaded", [True, None])  # None: ovos-core didn't say which skills are loaded
+def test_confirm_hands_the_held_intent_to_doublecheck(confirming, tmp_path, loaded):
+    """high_risk "confirm": Doublecheck gets what it needs to replay the dispatch; nothing later runs it."""
+    confirming.confirm_loaded = loaded
+    match = hold_unlock(confirming)
+    assert (match.match_type, match.skill_id) == (f"{DOUBLECHECK}:confirm", DOUBLECHECK)
+    assert match.match_data == {"held_intent": "lock.unlock", "held_label": f"{HA}:unlock",
+                                "held_match_data": {"entity": "front door"}}
+    assert [r["action"] for r in records(tmp_path)] == ["held"]
+
+
+def test_confirm_without_doublecheck_holds_silently(confirming):
+    """Live trial: a dispatch to a missing skill was silent but left ovos-core waiting out its 5-minute timeout."""
+    confirming.confirm_loaded = False
+    match = hold_unlock(confirming)
+    assert (match.match_type, match.match_data["reason"]) == (HANGUP, "held_high_risk")
+
+
+@pytest.mark.parametrize("skills, loaded", [([DOUBLECHECK], True), ([], False)])
+def test_startup_check_records_whether_doublecheck_is_loaded(confirming, skills, loaded):
+    confirming.bus.on("ovos.skills.list", lambda m: confirming.bus.emit(
+        m.response({"ok": True, "skills": [{"skill_id": s} for s in skills]})))
+    confirming._check_skills()  # pylint: disable=protected-access
+    assert confirming.confirm_loaded is loaded
+
+
+def test_unknown_high_risk_policy_is_rejected():
+    with pytest.raises(ValueError):
+        Settings(high_risk="confrim")
 
 
 def test_ocp_verdicts_are_delegated_to_ocps_own_step(runtime, tmp_path):
