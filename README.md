@@ -66,6 +66,17 @@ Restart ovos-core and the listener afterwards. No LLM? Leave out the LLM step an
 beats stock OVOS without one. [docs/configuration.md](docs/configuration.md) explains the order, every setting,
 and which stock matchers to switch off.
 
+**Optional: ask before risky requests.** By default, high-risk requests (unlock, open the garage, shut down, clear
+data) are held silently. To have the assistant ask first, install Doublecheck and turn it on:
+
+```sh
+pip install ovos-skill-doublecheck
+```
+
+```json
+"intents": {"switchboard": {"high_risk": "confirm"}}
+```
+
 ## Limitations
 
 - Phrases like `play {anything}` or `open {anything}` can claim speech meant for another skill.
