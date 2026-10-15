@@ -57,12 +57,13 @@ nothing, so you can compare it with your current setup first. Set `"mode": "acti
     "ovos-fallback-pipeline-plugin-low"
   ],
   "ovos-switchboard-llm-pipeline-plugin": {
-    "url": "http://<llm host>:8080/v1/chat/completions", "model": "Qwen/Qwen3-14B-AWQ"
+    "url": "https://your-llm-server/v1/chat/completions", "model": "Qwen/Qwen3-14B-AWQ"
   }
 }
 ```
 
-Restart ovos-core and the listener afterwards. No LLM? Leave out the LLM step and its settings; Switchboard still
+The LLM step works with any OpenAI-compatible chat completions endpoint (vLLM, LM Studio, Ollama, a hosted
+service); add `"api_key"` if yours needs one. Restart ovos-core and the listener afterwards. No LLM? Leave out the LLM step and its settings; Switchboard still
 beats stock OVOS without one. [docs/configuration.md](docs/configuration.md) explains the order, every setting,
 and which stock matchers to switch off.
 
