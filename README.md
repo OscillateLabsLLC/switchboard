@@ -64,7 +64,7 @@ nothing, so you can compare it with your current setup first. Set `"mode": "acti
 
 The LLM step works with any OpenAI-compatible chat completions endpoint (vLLM, LM Studio, Ollama, a hosted
 service); add `"api_key"` if yours needs one. Restart ovos-core and the listener afterwards. No LLM? Leave out the LLM step and its settings; Switchboard still
-beats stock OVOS without one. [docs/configuration.md](docs/configuration.md) explains the order, every setting,
+outperforms Adapt, Padatious and Model2Vec without one. [docs/configuration.md](docs/configuration.md) explains the order, every setting,
 and which stock matchers to switch off.
 
 **Optional: ask before risky requests.** By default, high-risk requests (unlock, open the garage, shut down, clear

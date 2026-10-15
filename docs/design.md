@@ -25,9 +25,9 @@ design, and testing against real household traffic cut it down to what's here.
 ## What testing changed
 
 The first plan had seven stages, including a sentence encoder, a slot-filling model and a trained reranker. Each
-stage had to beat stock OVOS before the next one was built.
+stage had to outperform Adapt, Padatious and Model2Vec before the next one was built.
 
-- **No sentence encoder.** A character n-gram classifier tied a small sentence encoder and beat OVOS's own Model2Vec
+- **No sentence encoder.** A character n-gram classifier tied a small sentence encoder and outperformed Model2Vec
   model. It needs no GPU and no download, and decides in about 10 ms at p95 on a 4-core mini PC.
 - **Exact matching first.** A classifier alone got 76% of skills' own declared phrases right; exact matching first
   got 98.9%. When two skills declare the same phrase, the classifier decides instead of guessing.

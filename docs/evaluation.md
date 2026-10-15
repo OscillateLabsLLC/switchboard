@@ -12,7 +12,7 @@ are public: [switchboard-eval](https://github.com/OscillateLabsLLC/switchboard-e
 - **Declared phrases:** requests that match a phrase an installed skill declares word for word.
 - **Non-commands:** near misses, off-topic speech, the assistant's own voice heard back, and background talk. Plus
   600 public sentences from meetings, idioms and dialogue, as a stress test.
-- **The comparison** is stock OVOS as shipped (Padatious and Model2Vec), not a tuned setup.
+- **The comparison** is stock OVOS as shipped (Adapt, Padatious and Model2Vec), not a tuned setup.
 - **Hardware:** an Apple M3 Max laptop, a 24 GB GPU (RTX 3090) for the 14B LLM, and a 4-core mini PC for latency.
 
 ## Headline
