@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.0](https://github.com/OscillateLabsLLC/switchboard/compare/v1.0.0...v1.1.0) (2026-10-15)
+
+
+### Features
+
+* collision_resolution "specific" (default) for template collisions ([97906b2](https://github.com/OscillateLabsLLC/switchboard/commit/97906b224ba9a4b3e13d4339882aa94227dc0ec3))
+* make collision_resolution "specific" the default ([59bc68a](https://github.com/OscillateLabsLLC/switchboard/commit/59bc68af85c50d79d2814d57d66b38e668e65091))
+* optional collision_resolution "specific" for template collisions ([62cde38](https://github.com/OscillateLabsLLC/switchboard/commit/62cde38592c4102c1fbdd28d5aefad9f4fb51483))
+
 ## 1.0.0 (2026-10-15)
 
 
