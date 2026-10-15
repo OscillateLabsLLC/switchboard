@@ -1,51 +1,36 @@
-# Design: confirming high-risk actions
+# Confirming high-risk requests
 
-Status: built (Switchboard `high_risk: "confirm"`, the Doublecheck skill) and tried live on an OVOS desktop. The questions raised in the first draft are answered under Decided.
+Some requests shouldn't run on a misheard word: unlocking a door, opening the garage, shutting down, clearing data.
+These are marked `risk: high` in the schema, and Switchboard never runs them directly. Confidence can't make them
+safe: wrong high-risk picks have reached 0.994.
 
-## Today
+## Two options
 
-High-risk intents (unlock, open covers, shutdown, clear data; `risk: high` in the schema) are never acted on. With `high_risk: "defer"`, a step that would dispatch one declines it through Hangup, with reason `held_high_risk` and the held intent and label recorded. Hangup stays silent, so the user hears nothing and nothing happens. That's safe, but it gives no way to say "yes, I meant it".
+- **`high_risk: "defer"` (default):** the request is held silently. It goes to Hangup, which logs it, and nothing
+  else happens.
+- **`high_risk: "confirm"`:** the request goes to [Doublecheck](https://github.com/OscillateLabsLLC/doublecheck),
+  which asks "I think you said: unlock the front door. Should I do that?" A clear yes runs exactly the held request;
+  anything else (no, silence, an unclear answer) runs nothing.
 
-## Goal
+Either way, the request is consumed: no later pipeline step can run it.
 
-"Unlock the front door" gets a spoken question. A clear "yes" within a few seconds runs exactly the action that was held. Anything else does nothing:
-- "no";
-- silence;
-- an unclear answer;
-- an overheard "yes" later on.
+`defer` stays the default because Switchboard can't guarantee Doublecheck is installed. If confirm is on but
+Doublecheck isn't loaded at startup, Switchboard logs an error and holds requests silently instead.
 
-## Proposal
+## Why quote the user
 
-1. **A new, small skill does the asking:** `ovos-skill-switchboard-confirm` (name open). Hangup's contract is silence, so it shouldn't gain a voice. Like Hangup, Switchboard requires this skill when confirmation is on.
-2. **Switchboard hands the held action to it** instead of to Hangup. When `high_risk: "confirm"`, the step that would dispatch a high-risk intent returns a match for the confirm skill carrying:
-   - the held skill label (`skill_id:intent_name`);
-   - the match data the skill would have received (today's hold doesn't pass this; it has to);
-   - the utterance and the session.
-3. **The confirm skill asks, using the user's own words.** "I think you said: unlock the front door. Should I do that?" The frame is a translatable `.dialog` file, and the quoted utterance needs no translation. This avoids writing a spoken description for every high-risk intent in every language.
-4. **It reads the answer with OVOS's own yes/no handling** (`ask_yesno`: localized yes/no vocabularies, one short listening window).
-   - **On "yes":** it re-emits the held intent the way ovos-core's intent service does on a match (`ovos_core/intent_services/service.py`):
-     - a reply to the original utterance message, which keeps its context and session;
-     - named `skill_id:intent_name`;
-     - data = the original message data merged with the match data, plus `utterance` and `lang`;
-     - `skill_id` in the context.
+Doublecheck repeats what it heard instead of describing the action ("Unlock the front door?"). That needs no
+per-intent wording in every language, and it's honest about speech recognition: if the assistant misheard, the
+user hears the mistake before anything runs.
 
-     The target skill can't tell the difference. The confirm skill therefore has to carry the original message's data and context, not just the match.
-   - **On "no", silence, a timeout or anything unclear:** it says a short "OK, I won't" (`.dialog`) and does nothing.
-5. **Fail safe:**
-   - the held action is kept only in memory, only for that one question, and is dropped on timeout;
-   - a "yes" outside the question window is just an ordinary utterance and goes through the normal pipeline, where "yes" alone dispatches nothing;
-   - Switchboard's echo guard already keeps the assistant's own question from answering itself.
-6. **Config:** `high_risk` gains `"confirm"`. `"defer"` (silent hold) stays available; `"allow"` stays for testing. The default stays `"defer"` (see Decided).
+## How the yes runs
 
-## How it would be tested
+On a yes, Doublecheck sends the skill exactly the message ovos-core would have sent: the original utterance's data
+and context, the matched slots, and the skill's id. The skill can't tell a confirmed request from a normal one.
 
-- **Unit tests:** in the step, a high-risk verdict becomes a confirm match carrying label, match data and session. In the skill, yes re-emits exactly the held message, and no, timeout and unclear emit nothing.
-- **Live, without ever saying a real high-risk phrase** (standing rule): a stand-in intent marked `risk: high` in a test schema. For example, a harmless intent such as a timer, temporarily treated as high-risk on the test Mac, then the full spoken round trip.
-- **The harness** scores routing, not conversations. Its numbers don't change: a held row is still "not executed".
+## Safety
 
-## Decided
-
-1. **Skill name and repo:** [Doublecheck](https://github.com/OscillateLabsLLC/doublecheck), its own OscillateLabsLLC repo, like Hangup.
-2. **Default:** `"defer"`, permanently. `"confirm"` is opt-in: Switchboard can't guarantee the confirm skill is installed (Mike, after the live trial).
-3. **Wording:** quote the user ("I think you said: … Should I do that?"). Quoting needs no per-intent text and survives ASR errors honestly, because the user hears what was actually understood. A per-intent description ("Unlock the front door?") would read more naturally but needs maintenance per intent and language.
-4. **Medium-risk intents** (e.g. `alarm.cancel`): unchanged, never asked about.
+- The held request lives only in memory, for one question.
+- A "yes" said later is just an ordinary utterance and runs nothing.
+- Doublecheck only asks in languages it can understand the answer in (see its README). Otherwise it holds silently.
+- Medium-risk intents, such as cancelling an alarm, aren't asked about.

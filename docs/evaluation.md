@@ -1,42 +1,44 @@
-# Evaluation: what Switchboard does well, what it doesn't, and how to configure it
+# Evaluation
 
-Every number here comes from Switchboard's evaluation harness, a separate test suite that records each experiment, including the ones that failed. Choices were made on a dev split and reported once on a held-out test split.
+Every number here was measured on Switchboard's evaluation harness, which keeps every experiment, including the
+failures. Choices were made on a dev split and reported once on a held-out test split. The data, code and results
+are public: [switchboard-eval](https://github.com/OscillateLabsLLC/switchboard-eval).
 
-## The data, and how far to trust it
+## The data
 
-- **Real traffic** from two devices: a smart speaker running Neon and a desktop running OVOS. About 65 real requests per device per split, so differences under about 6 points are noise. Paired comparisons use McNemar's test.
-- **Magic phrases:** rows that match a phrase some installed skill declares.
-- **Non-commands:** near misses, out-of-domain speech, the assistant's own TTS heard back, and background speech. Plus 600 public sentences from meetings, idioms and dialogue, as a stress test.
-- **Comparator:** stock OVOS as shipped (Padatious + Model2Vec), not a hand-tuned setup.
-- **One skill intent, several of ours:** where a skill handles several of our intents with one intent (the OVOS and Neon alerts skills cancel alarms and timers alike), a dispatch counts as right for each. The rule is applied to stock OVOS and Switchboard identically.
-- **Hardware:** an Apple M3 Max laptop, plus a 24 GB desktop GPU (RTX 3090) for the 14B LLM. The decision without an LLM was also timed on a mini PC (4-core x86, 7.5 GB). **Nothing has been measured on a Raspberry Pi yet.**
-- **Other languages:** English is the only language with real traffic. The others are measured on template hold-outs, plus 62 Galician sentences drafted with an AI model and **not reviewed by a native speaker**.
+- **Real traffic** from one household's two devices: a Neon smart speaker and an OVOS desktop. About 65 real
+  requests per device per split, so differences under about 6 points are noise. Comparisons use a paired test
+  (McNemar).
+- **Declared phrases:** requests that match a phrase an installed skill declares word for word.
+- **Non-commands:** near misses, off-topic speech, the assistant's own voice heard back, and background talk. Plus
+  600 public sentences from meetings, idioms and dialogue, as a stress test.
+- **The comparison** is stock OVOS as shipped (Adapt, Padatious and Model2Vec), not a tuned setup.
+- **Hardware:** an Apple M3 Max laptop, a 24 GB GPU (RTX 3090) for the 14B LLM, and a 4-core mini PC for latency.
 
-## Headline (test split, default configuration, 14B LLM on a GPU)
+## Headline
+
+Test split, default settings, with a 14B LLM on a GPU:
 
 | | stock OVOS | Switchboard |
 |---|---|---|
-| Declared phrases ("magic") right | 96.1% | 98.1% (speaker) / 100% (desktop) |
-| Real speaker requests right | 42.2% | **84.4%** (p = 4.6e-7) |
-| Real desktop requests right | 71.4% | **88.9%** (p = 0.007) |
+| Declared phrases handled correctly | 96.1% | 98.1% (speaker), 100% (desktop) |
+| Real speaker requests handled correctly | 42.2% | **84.4%** (p = 5e-7) |
+| Real desktop requests handled correctly | 71.4% | **88.9%** (p = 0.007) |
 | Acts on non-commands | 100% | **12.5%** |
-| High-risk actions executed by mistake | 0 | 0 (always held) |
+| High-risk actions run by mistake | 0 | 0 (always held) |
 
-- **Same answer every time.** Three fresh builds gave zero routing differences. A local LLM at temperature 0, rerun without its cache, reproduced every decision.
-- **Speed (M3 Max).**
-  - The decision without the LLM takes 1.9 ms at p95.
-  - On a 4-core mini PC (a Beelink, also running other services): 9.2–9.5 ms at p95, about 4× the M3 Max and far under the 300 ms bar. Training the classifier took 77 s (21 s on the M3 Max); it runs once, then later starts load the cached model.
-  - Live end-to-end decisions take 46–108 ms. Shipped Padatious takes 57–114 ms; Padacioso, 78–137 ms.
-  - These numbers need the ovos-workshop converse fix ([OpenVoiceOS/ovos-workshop#714](https://github.com/OpenVoiceOS/ovos-workshop/pull/714)). Without it, every pipeline, stock included, waits an extra 0.5 s per utterance.
-- **In a live trial on the desktop:** 1 wrong route per 14-utterance round. Both stock pipelines had 5.
+- **Same answer every time:** three fresh builds made identical decisions, and so did the LLM at temperature 0.
+- **Fast without an LLM:** 1.9 ms at p95 on the M3 Max, 9.5 ms on the mini PC. Live, end to end, decisions took
+  46-108 ms, against 57-114 ms for stock Padatious. These need an ovos-workshop fix
+  ([#714](https://github.com/OpenVoiceOS/ovos-workshop/pull/714)); without it every pipeline, stock included, waits
+  an extra 0.5 s.
+- **In a live trial on the desktop:** 1 wrong route per round of 14 requests; stock had 5.
 
-An earlier README figure of 90.6% used the opt-in `always` decline policy. That policy fails the false-accept limit on dev (27.3% against 25%), so the default numbers above are the fair ones.
+## How it fails
 
-## How it fails: by doing nothing, not by doing the wrong thing
+Real requests on the test split:
 
-Real requests on the test split, split by outcome:
-
-| | right | wrong action | did nothing |
+| | right | wrong skill | did nothing |
 |---|---|---|---|
 | stock OVOS, speaker | 42.2% | **56.2%** | 1.6% |
 | stock OVOS, desktop | 71.4% | 27.0% | 1.6% |
@@ -47,85 +49,72 @@ Real requests on the test split, split by outcome:
 | Switchboard + 14B LLM, speaker | 84.4% | 1.6% | 14.1% |
 | Switchboard + 14B LLM, desktop | 88.9% | 9.5% | 1.6% |
 
-Stock OVOS mostly fails by doing the wrong thing. Switchboard mostly fails by doing nothing, which a user can simply repeat or rephrase. An LLM or the decider turns more of the "did nothing" rows into right answers. On the desktop, wrong actions stay at 8–10% at every tier. About a third of them are the OVOS weather skill answering "what's the weather tomorrow" through its current-weather intent: the right handler, which the scoring can't credit without knowing which of that skill's intents ran. The rest are a weekday question answered by the date skill's weekday intent, a question about last night's weather, the date skill's `when is {x}` catch-all taking "when is sunset", and an overheard quote. (On dev, "dismiss alarm" and "dismiss timer" also go wrong: no template uses that verb.)
+Stock OVOS fails by doing the wrong thing. Switchboard fails by doing nothing, which the user can just repeat or
+rephrase. About a third of the desktop's "wrong" answers are the weather skill answering "what's the weather
+tomorrow" with its current-weather handler: the right skill, which the scoring can't credit.
 
 ## What it does well
 
-- **Declared phrases route deterministically.** Exact matching runs first and never guesses between colliding templates.
-- **It stays quiet when speech isn't for it.**
-  - On 71 real overheard utterances, it acted on 7; Neon's own matching had acted on all 71 (measured with `always` routing, the less cautious policy).
-  - On the 600 public sentences, treated as false wakes, the default configuration acted on 2.5%. Without the LLM it was 1.8%; with the opt-in `always` policy, 13.8%.
-- **Paraphrases are handled.** On real speaker traffic, Switchboard doubles stock's accuracy. Without any LLM it still reaches 76.6%, so the classifier carries most of that gain; the LLM adds the rest.
-- **No skill changes are needed.** LLM tools come from what skills already register. Dispatches carry the skill's own slot names.
-- **Rich-template languages work well.** On template hold-outs, Galician and Catalan both score 93.9% right, compared with 83.0% for English.
+- **Declared phrases always go to the same place.** Exact matching runs first and never guesses between two skills.
+- **It stays quiet when speech isn't for it.** Of 71 real overheard utterances it acted on 7; Neon acted on all 71.
+  Of the 600 public sentences, it acted on 2.5% (1.8% without the LLM).
+- **Rephrasing works.** Without any LLM it still handles 76.6% of real speaker requests, so the classifier does most
+  of the work.
+- **No skill changes.** Everything comes from what skills already register.
+- **Languages with many phrases do well.** Galician and Catalan skills declare many phrases per intent, and both
+  score 93.9% on held-out phrases, against 83.0% for English.
 
-## What it does badly, or not at all
+## What it does badly
 
-- **Verb + free-slot templates** such as `play {query}`, `say {x}` and `start {application}`.
-  - The exact layer treats these as declared phrases. A catch-all steps aside only when the classifier is at least 0.8 confident of something else.
-  - Lowering that threshold breaks real "say …" and "play …" commands, so a global threshold can't fix it.
-  - Neon's launcher template `open {program}` takes phrases like "open the door" or "open the weather" through the exact layer. Nothing high-risk runs, but the user gets the wrong skill.
-  - OVOS's launcher keeps such phrases out with a runtime blacklist. Switchboard can't see that blacklist.
-- **Unlisted paraphrases near a catch-all.** "Start counting to ten" goes to the launcher if the count skill doesn't list that phrasing.
-- **Questions between people.** "Do you think you studied enough?" is phrased to "you", and text alone can't tell who "you" is. Under `always` routing, 59 of the 83 public sentences acted on were questions like this sent to `ask_knowledge`.
-  - The default `active` policy sends that kind of row to the LLM only within 120 s of the assistant speaking, so cold overheard questions mostly stay out (4 LLM accepts of 600). Within that window, the problem remains.
-- **Thin-template languages.** French skills declare 14 template lines per intent, against 58 for English and 125 for Galician. French passes 23% of hold-out phrases. It isn't wrong more often; it just covers less.
-- **In Galician, the decline class can outrank real requests.** Five of the 7 missed Galician requests had "not for me" on top, three with the right intent second. Why is not yet measured.
-- **Training memory at scale.** Training runs in a short-lived child process, so afterwards ovos-core holds only the model: about 160 MB at 146 intents and 240 MB at 465. While it runs, the child peaks below 0.9 GB at 146 intents but about 3.4 GB at 465, which matters for small devices with very large skill sets.
-- **Out of scope.** Slot typing and entity resolution stay in the skills. By default high-risk intents are held silently. Asking first (Doublecheck, `high_risk: "confirm"`) is opt-in by design: Switchboard can't guarantee the skill is installed. There is no disambiguation ("did you mean X or Y?") yet.
+- **Catch-all phrases** like `play {query}`, `say {x}` or `start {application}` claim almost any speech that begins
+  with that word. Switchboard lets one step aside only when the classifier is at least 80% sure of another skill,
+  and no single threshold fixes every case. Neon's `open {program}` takes "open the weather". Nothing high-risk
+  runs, but the wrong skill can.
+- **Questions between people.** "Do you think you studied enough?" could be for the assistant or for someone in the
+  room; text alone can't tell. By default such questions reach the LLM only within 2 minutes of the assistant
+  speaking, so most overheard ones are ignored, but not inside that window.
+- **Languages with few phrases.** French skills declare 14 phrases per intent, against 58 for English, so
+  Switchboard passes more often in French. In Galician, "not for me" sometimes outranks real requests; the cause
+  isn't known yet.
+- **Many skills, little memory.** Training runs once, in a separate process, and peaks at about 0.9 GB with 146
+  intents and 3.4 GB with 465. Afterwards the model takes 160-240 MB.
+- **Not covered:** typed slots and finding the right device stay in the skills. It never offers a choice ("did you mean X or Y?"); the only question it can ask is Doublecheck's yes/no on a risky request.
 
-## Scale: more skills mostly means more caution
+## More skills
 
-These numbers are from template hold-outs with no LLM: every fifth template line is held out and routed.
+Held-out phrases, no LLM:
 
-| skills installed | intents | right | wrong | passed | train time | peak memory |
-|---|---|---|---|---|---|---|
-| a typical desktop install (31 skills) | 146 | 82.9% | 8.7% | 8.4% | 8 s | 0.8 GB |
-| + the OpenVoiceOS org's skills | 222 | 81.0% | 8.8% | 10.2% | 14 s | 1.4 GB |
-| + OVOSHatchery | 459 | 68.8% | 17.5% | 13.7% | 46 s | 3.3 GB |
-| + further third-party skills | 465 | 68.9% | 17.4% | 13.7% | 40 s | 3.3 GB |
+| skills installed | intents | right | wrong | passed |
+|---|---|---|---|---|
+| a typical desktop (31 skills) | 146 | 82.9% | 8.7% | 8.4% |
+| + all of OpenVoiceOS's skills | 222 | 81.0% | 8.8% | 10.2% |
+| + OVOSHatchery | 459 | 68.8% | 17.5% | 13.7% |
 
-Peak memory is the experiment process, which builds two stacks: an upper bound, not a device's steady state.
+More skills mostly means more caution: it passes more and guesses less. Most of the extra wrong answers come from one
+phrase, the launcher's `(launch|start|open|run) {application}`, and the test overstates even those (it removes the
+other skill's phrase, which normally would collide and go to the classifier). Latency stays around 1-2 ms.
 
-- **Most wrong answers come from one catch-all.** At every size, the largest single source of wrong answers is the OVOS launcher's `(launch|start|open|run) {application}` catching the count skill's lines. Leave those out and wrong answers stay at 2.9–4.0% at every size.
-- **That template sits on a knife edge.** Whether it steps aside depends on the classifier clearing 0.8 for another intent, and at 459 intents about 90 of these rows sit right at that line: switching the classifier from float64 to float32, which changed nothing else measurable, moved them (wrong 13.4% → 17.5% at 459 intents).
-- **This test overstates catch-all harm.** It removes the victim's own template. With every template installed, the two would collide and the classifier would decide. None of the real-traffic rows is a launcher misroute.
-- **Real scale effects:**
-  - Passes grow (8.4% → 13.7%): more classes dilute confidence, so the assistant declines rather than guesses.
-  - Training time and memory grow too.
-  - Latency stays around 1–2 ms.
+## Choosing a setup
 
-## Choosing a configuration
+**Recommended:** the LLM step, with a model on a small GPU or an Apple-silicon Mac.
 
-**Recommended:** the LLM step with a model on a small GPU or an Apple-silicon Mac. Without one, Switchboard still improves on stock OVOS; the decider step is an experimental middle ground for users who want to try it.
-
-| Situation | Configuration | What you get (test) |
+| situation | setup | result (test) |
 |---|---|---|
-| **No LLM** (CPU only, offline) | Leave out the LLM step; set `route_decline_class` to `never` | Real speaker 76.6% (beats stock, p = 2.7e-5), desktop 79.4% (not significant). Magic 95–97%, below the 98% bar. Most cautious: acts on 7.5–10% of non-commands |
-| **No LLM, decider (experimental)** | The decider step (`[decider]` extra), tasksource-decider-nano (150M) on the CPU | Real speaker 79.7% (p = 8e-6 vs stock), desktop 82.5% (not significant). Same false accepts as no LLM. About 80 ms per decision on the CPU (M3 Max), no LLM host. The gain over no LLM is a few rows: not yet significant |
-| **Small local LLM** | Qwen3-1.7B (1.84 GB file) on LM Studio or similar, `shortlist_k` 12 | Passes every criterion. Real speaker 81.2%, desktop 85.7%, non-commands 10–12.5%. LLM route p50 965 ms, gate 114 ms (M3 Max GPU) |
-| **Small local LLM, latency first** | Same, `shortlist_k` 6 | Route p50 623 ms (-35%). About 1.5 points lower on real speaker traffic (desktop the same), and magic 97.1% on the speaker, below the 98% bar |
-| **GPU LLM server** | Qwen3-14B-AWQ on vLLM (24 GB GPU) | Best measured: real speaker 84.4%, desktop 88.9%, non-commands 12.5%. About 400–470 ms per fresh LLM decision |
+| **No LLM** (CPU only) | leave out the LLM step; `route_decline_class: never` | speaker 76.6%, desktop 79.4%; the most cautious |
+| **No LLM, decider** (experimental) | the decider step on the CPU, about 80 ms per decision | speaker 79.7%, desktop 82.5%; the gain over no LLM isn't significant yet |
+| **Small local LLM** | Qwen3-1.7B on LM Studio or similar | speaker 81.2%, desktop 85.7%; about 1 s per LLM decision on a Mac's GPU |
+| **GPU LLM server** | Qwen3-14B-AWQ on vLLM (24 GB GPU) | speaker 84.4%, desktop 88.9%; about 0.4 s per LLM decision |
 
-- **Bigger models aren't automatically better.**
-  - Qwen3-4B matched the 1.7B's accuracy but acted on more non-commands. On dev it acted on 33.3%, failing the 25% limit. It's also twice as slow (route p50 1,978 ms), and on LM Studio it wasn't repeatable: about 5% of its LLM decisions changed between two runs at temperature 0. The 1.7B reproduced every decision.
-  - Qwen3.6-35B-A3B scored level with the 14B within noise. At 20.5 GB it doesn't fit beside the OVOS stack on a 36 GB machine: the run swapped.
-- **No GPU: don't run the LLM on CPU.** The route prompt is about 1,750 tokens (each skill tool about 100). On the M3 Max's plain CPU cores, Qwen3-1.7B (Q8_0 GGUF) reads prompts at about 224 tokens/s, so about 8 s per route call (5 s with 6 tools). A typical mini PC would be several times slower (estimate). Without a GPU, use the no-LLM or decider configuration.
-- **The small-model numbers are MLX builds** (8-bit 1.7B, 4-bit 4B) on Apple's GPU. GGUF builds of the same models on other hardware weren't checked for identical answers.
-- **Servers without logprobs (LM Studio).** The addressee gate reads a plain yes/no, so it's binary rather than calibrated. Servers that don't enforce tool choice let small models invent tool names; Switchboard declines those (`unknown_tool`).
-- **Languages.**
-  - Set `lang`. Every language needs its skills' own templates, and the decline class trains on that language's `.dialog` lines.
-  - Prompts are English for now. With the 1.7B and English prompts, Galician paraphrases scored 75.0% right, 8.3% wrong and 16.7% passed.
-- **Decline policy.**
-  - `active` (default): send "not for me" verdicts to the LLM only if the assistant spoke in the last 120 s.
-  - `always`: higher accuracy (speaker 90.6%) but acts on more overheard speech. An option for users who tolerate that, not a default.
-- **Many skills (400+).**
-  - Expect more passes, not many more wrong answers, except around catch-all templates.
-  - Budget about 3.4 GB, briefly, for the first training (it runs in a child process). Later starts load the cached model.
+- **Bigger isn't automatically better.** Qwen3-4B acted on more non-commands than the 1.7B, was twice as slow, and
+  didn't repeat its own answers. A 35B model matched the 14B but didn't fit beside OVOS on a 36 GB machine.
+- **Don't run the LLM on a CPU.** A route prompt is about 1,750 tokens, which takes about 8 s on a fast laptop's
+  CPU and longer on a mini PC. Without a GPU, use no LLM or the decider.
+- **The `always` policy** (send every "not for me" to the LLM) is more accurate (speaker 90.6%) but acts on more
+  overheard speech, so it's an option, not the default.
+- **Other languages** need their skills' own phrases; set `lang`. The prompts are English for now.
 
 ## Not yet measured
 
-- Raspberry Pi latency and memory, and the LLM-free configuration's live end-to-end time on a mini PC.
-- Native-speaker evaluation data for any language except English.
-- Traffic from more than one home.
-- Training memory with a different solver.
+- A Raspberry Pi.
+- Real speech in any language but English, and test phrases reviewed by native speakers.
+- More than one home.
