@@ -13,6 +13,22 @@ def test_dialog_lines_from_skill_locale_folders(tmp_path):
     assert sorted(lines) == ["# comment", "(The|Your) {device} is off", "All done."]
 
 
+def test_a_package_with_too_many_lines_is_sampled_evenly(tmp_path):
+    folder = tmp_path / "skill_history" / "locale" / "en-us"
+    folder.mkdir(parents=True)
+    (folder / "events.dialog").write_text("# events\n" + "".join(f"Event number {i}.\n" for i in range(100)))
+    lines = installed_dialog_lines("en-us", roots=[str(tmp_path / "skill_history")], max_per_package=10)
+    assert lines == [f"Event number {i}." for i in range(0, 100, 10)]
+
+
+def test_a_package_under_the_cap_keeps_every_line(tmp_path):
+    folder = tmp_path / "skill_small" / "locale" / "en-us"
+    folder.mkdir(parents=True)
+    (folder / "done.dialog").write_text("# comment\nAll done.\nFinished.\n")
+    assert installed_dialog_lines("en-us", roots=[str(tmp_path / "skill_small")], max_per_package=2) == [
+        "# comment", "All done.", "Finished."]
+
+
 def test_negatives_skip_comments_short_lines_and_real_requests():
     definitions = {"s": [{"skill_id": "s", "intent_name": "time", "lang": "en-us", "method": "template",
                           "definition": {"samples": ["what time is it"]}}]}

@@ -241,7 +241,8 @@ class ClassifierStep(SwitchboardStep):
         """The classifier stage for the current registrations, trained or loaded from the model cache."""
         synthetic = list(self.synthetic)
         if self.options.dialog_negatives:
-            synthetic += harvest_dialog_negatives(self.runtime.dialog_lines(b.lang), b.definitions, b.lang)
+            lines = self.runtime.dialog_lines(b.lang, exclude=self.options.dialog_negatives_exclude)
+            synthetic += harvest_dialog_negatives(lines, b.definitions, b.lang)
         rows = training_data(b.device, b.schema, synthetic)
         classifier, cached = self.runtime.models.get_or_build("classifier", [model_fingerprint(), rows],
                                                               lambda: train_isolated(rows), Classifier)
