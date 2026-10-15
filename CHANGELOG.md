@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.1](https://github.com/OscillateLabsLLC/switchboard/compare/v1.1.0...v1.1.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* a skill with huge dialog files can no longer crash classifier training ([82d39dc](https://github.com/OscillateLabsLLC/switchboard/commit/82d39dcd31bd466e122b94976fb9f15c576512fd))
+* a skill with huge dialog files can no longer crash classifier training ([c7af3f7](https://github.com/OscillateLabsLLC/switchboard/commit/c7af3f7dfa81b4b4d253e2b0a81eeaf9bc135e92))
+
 ## [1.1.0](https://github.com/OscillateLabsLLC/switchboard/compare/v1.0.0...v1.1.0) (2026-10-15)
 
 
