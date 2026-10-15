@@ -52,11 +52,11 @@ class ExactOptions:
     collision_priority: str = "none"
     core_skills: tuple = (".openvoiceos", ".neongeckocom", "ocp")
     skill_priority: tuple = ()
-    # Still colliding after those: "classifier" hands the phrase to the classifier (the default); "specific" lets the
+    # Still colliding after those: "specific" (the default) lets the
     # intent with the most specific matching template win, the one covering the most words of the utterance with
-    # literal text rather than slots (as Padatious effectively prefers), if exactly one does. A rule, not a guess, so
-    # Switchboard without an LLM stays fully deterministic.
-    collision_resolution: str = "classifier"
+    # literal text rather than slots (as Padatious effectively prefers), if exactly one does; a tie, or "classifier",
+    # hands the phrase to the classifier. A rule, not a guess, so Switchboard without an LLM stays fully deterministic.
+    collision_resolution: str = "specific"
 
     def __post_init__(self):
         if self.collision_priority not in COLLISION_PRIORITIES:

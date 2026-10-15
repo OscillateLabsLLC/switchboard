@@ -99,7 +99,7 @@ other skill's phrase, which normally would collide and go to the classifier). La
 The OVOS skills' end-to-end test phrases ([OpenVoiceOS/ovos-intents](https://huggingface.co/datasets/OpenVoiceOS/ovos-intents)
 v6.1, test split), scored by exact skill intent, without an LLM:
 
-| phrases | rows | default | `collision_resolution: specific` |
+| phrases | rows | `collision_resolution: classifier` | `specific` (the default) |
 |---|---|---|---|
 | English (the set that suggested the rule) | 683 | 93.0% right, 0.6% wrong | 98.1% right, 1.0% wrong |
 | Catalan | 59 | 67.8% right, 15.3% wrong | 79.7% right, 15.3% wrong |
@@ -109,7 +109,7 @@ v6.1, test split), scored by exact skill intent, without an LLM:
 Most of these phrases repeat one of their intent's own templates, so the set mostly tests whether a declared phrase
 gets to its intent. The misses were sibling intents of one skill whose templates both match ("change my alarm to
 repeat every monday"); the specific rule settles them by the phrase that matched more words literally. On this
-harness's speaker and desktop data it changed no decision, with or without the LLM. It stays off by default for now.
+harness's speaker and desktop data it changed no decision, with or without the LLM. So it's the default.
 
 ## Choosing a setup
 

@@ -52,8 +52,8 @@ log, then find the rule below.
 - A phrase with one fixed word and a slot (`play {query}`) steps aside if the classifier is at least 80% sure it's
   a different intent.
 - If phrases of two or more intents match (a collision), these are checked in order: `skill_priority`, then
-  `collision_priority`, then, if you turned it on, `collision_resolution: "specific"`. Specific means the phrase
-  that matched more of the words literally wins. Anything still undecided goes to the classifier. The exact step
+  `collision_priority`, then the phrase that matched more of the words literally (turn this off with
+  `collision_resolution: "classifier"`). Anything still undecided goes to the classifier. The exact step
   never guesses.
 
 **Classifier step:** a model trained on the installed skills' phrases and their spoken lines.

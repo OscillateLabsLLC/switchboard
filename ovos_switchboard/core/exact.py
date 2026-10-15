@@ -3,8 +3,8 @@
 A phrase matching templates of exactly one owner routes to that owner, even an unmapped skill: it is a declared
 phrase. A collision between 2+ owners returns None so the classifier decides, unless ExactOptions.skill_priority
 lists one of the colliding skills, collision_priority names a group (core or user skills) with exactly one owner
-among them, or collision_resolution "specific" finds one owner with the most specific matching template: rules, not
-guesses. No stochastic matcher here, ever.
+among them, or collision_resolution "specific" (the default) finds one owner with the most specific matching
+template: rules, not guesses. No stochastic matcher here, ever.
 """
 import re
 

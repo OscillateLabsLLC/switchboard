@@ -25,7 +25,7 @@ def owner(device, **options):
     return ExactLayer(device, Schema.load(), options=ExactOptions(**options)).route("turn off the living room lights")
 
 
-def test_a_collision_goes_to_the_classifier_by_default(device):
+def test_a_tied_collision_goes_to_the_classifier_by_default(device):
     assert owner(device) is None
 
 
@@ -82,12 +82,12 @@ def sibling_owner(device, utterance, **options):
     return ExactLayer(device, Schema.load(), options=ExactOptions(**options)).route(utterance)
 
 
-def test_by_default_a_collision_still_goes_to_the_classifier(siblings):
-    assert sibling_owner(siblings, "change my alarm to repeat every monday") is None
+def test_classifier_mode_sends_every_collision_to_the_classifier(siblings):
+    assert sibling_owner(siblings, "change my alarm to repeat every monday", collision_resolution="classifier") is None
 
 
-def test_specific_lets_the_template_with_more_literal_words_win(siblings):
-    winner = sibling_owner(siblings, "change my alarm to repeat every monday", collision_resolution="specific")
+def test_by_default_the_template_with_more_literal_words_wins(siblings):
+    winner = sibling_owner(siblings, "change my alarm to repeat every monday")
     assert winner.endswith(f"{SIBLINGS}:change_repeat")  # unmapped intents own themselves (__unmapped__:<label>)
 
 
