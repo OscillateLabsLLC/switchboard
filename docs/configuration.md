@@ -110,7 +110,8 @@ override the shared `mode`.
 | classifier | `threshold` | 0.5 | confidence needed to dispatch |
 | classifier | `route_decline_class` | `active` | what "not for me" does: `active` passes it to the LLM only if the assistant spoke in the last `active_s`; `always` always passes; `never` declines |
 | classifier | `active_s` | 120 | the "assistant just spoke" window, in seconds |
-| classifier | `dialog_negatives` | true | train "not for me" on the skills' own spoken lines |
+| classifier | `dialog_negatives` | true | train "not for me" on the skills' own spoken lines, at most 2,000 per skill |
+| classifier | `dialog_negatives_exclude` | `["ovos-skill-days-in-history.openvoiceos"]` | skills whose spoken lines are left out; days-in-history ships 136,639 lines of historical events, which only slow training down |
 | llm | `url`, `model`, `api_key` | none | an OpenAI-compatible endpoint; without `url` the step never matches |
 | llm | `timeout_s` | 4 | per request; there are two per utterance |
 | llm | `route_max_tokens`, `cache_size` | 200, 1024 | room for one tool call; cached responses |

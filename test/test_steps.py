@@ -24,7 +24,7 @@ def utterance_message():
 def runtime_fixture(bus, tmp_path):
     rt = SwitchboardRuntime(bus, Settings(mode="active", retrain_debounce_s=3600,
                                           decision_log_path=str(tmp_path / "decisions.jsonl")),
-                            dialog_lines=lambda lang: DIALOG_LINES, start=False)
+                            dialog_lines=lambda lang, exclude=(): DIALOG_LINES, start=False)
     register_all(bus)
     yield rt
     rt.shutdown()
@@ -130,7 +130,7 @@ def test_high_risk_hold_consumes_the_utterance(runtime, tmp_path):
 def confirming_fixture(bus, tmp_path):
     rt = SwitchboardRuntime(bus, Settings(mode="active", high_risk="confirm", retrain_debounce_s=3600,
                                           decision_log_path=str(tmp_path / "decisions.jsonl")),
-                            dialog_lines=lambda lang: DIALOG_LINES, start=False)
+                            dialog_lines=lambda lang, exclude=(): DIALOG_LINES, start=False)
     register_all(bus)
     yield rt
     rt.shutdown()
@@ -194,7 +194,7 @@ def test_first_build_skips_the_debounce_and_answers_readiness(bus, tmp_path):
     """Live: "I am ready" came 8 s before Switchboard was; 5 s of it was the debounce after skills had loaded."""
     rt = SwitchboardRuntime(bus, Settings(mode="active", retrain_debounce_s=3600, bus_timeout_s=0.1,
                                           decision_log_path=str(tmp_path / "decisions.jsonl")),
-                            dialog_lines=lambda lang: DIALOG_LINES, start=False)
+                            dialog_lines=lambda lang, exclude=(): DIALOG_LINES, start=False)
     register_all(bus)
     ExactStep(bus, {}, runtime=rt)
     replies = []
@@ -279,7 +279,7 @@ def test_decider_step_dispatches_and_declines(runtime, monkeypatch):
 def test_shadow_mode_never_matches_and_later_steps_skip_settled_utterances(bus, tmp_path):
     rt = SwitchboardRuntime(bus, Settings(mode="shadow", retrain_debounce_s=3600,
                                           decision_log_path=str(tmp_path / "decisions.jsonl")),
-                            dialog_lines=lambda lang: DIALOG_LINES, start=False)
+                            dialog_lines=lambda lang, exclude=(): DIALOG_LINES, start=False)
     register_all(bus)
     steps = [ExactStep(bus, {}, runtime=rt), ClassifierStep(bus, {}, runtime=rt)]
     rt.rebuild()
@@ -345,7 +345,7 @@ def wait_for(condition, timeout=5.0):
 
 def test_rebuilds_wait_until_core_has_loaded_skills(bus):
     rt = SwitchboardRuntime(bus, Settings(retrain_debounce_s=0.01, bus_timeout_s=0.1, decision_log=False),
-                            dialog_lines=lambda lang: DIALOG_LINES, start=False)
+                            dialog_lines=lambda lang, exclude=(): DIALOG_LINES, start=False)
     ExactStep(bus, {}, runtime=rt)
     register_all(bus)
     time.sleep(0.2)
@@ -358,7 +358,7 @@ def test_rebuilds_wait_until_core_has_loaded_skills(bus):
 def test_a_reloaded_pipeline_builds_when_core_is_already_ready(bus):
     bus.on("mycroft.skills.is_ready", lambda m: bus.emit(m.response({"status": True})))
     rt = SwitchboardRuntime(bus, Settings(retrain_debounce_s=0.01, bus_timeout_s=0.1, decision_log=False),
-                            dialog_lines=lambda lang: DIALOG_LINES)
+                            dialog_lines=lambda lang, exclude=(): DIALOG_LINES)
     ExactStep(bus, {}, runtime=rt)
     register_all(bus)
     assert wait_for(lambda: rt.stage("exact") is not None)
@@ -375,3 +375,22 @@ def test_wake_phrases_reach_the_exact_and_prefix_steps(bus):
     name, match = run_pipeline([exact, prefix], "hey mycroft tell me the time oh and")
     assert (name, match.match_type) == ("prefix", "ovos-skill-date-time.openvoiceos:what_time_is_it")
     rt.shutdown()
+
+
+def test_the_classifier_skips_dialog_lines_from_excluded_skills(bus, tmp_path):
+    asked = []
+    rt = SwitchboardRuntime(bus, Settings(mode="active", retrain_debounce_s=3600,
+                                          decision_log_path=str(tmp_path / "decisions.jsonl")),
+                            dialog_lines=lambda lang, exclude=(): asked.append(exclude) or DIALOG_LINES, start=False)
+    register_all(bus)
+    try:
+        ClassifierStep(rt.bus, {"dialog_negatives_exclude": ["skill-trivia.example"]}, runtime=rt)
+        rt.rebuild()
+        assert asked == [("skill-trivia.example",)]
+    finally:
+        rt.shutdown()
+
+
+def test_days_in_history_dialogs_are_excluded_by_default(runtime):
+    assert "ovos-skill-days-in-history.openvoiceos" in ClassifierStep(
+        runtime.bus, {}, runtime=runtime).options.dialog_negatives_exclude

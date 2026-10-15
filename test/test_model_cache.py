@@ -86,7 +86,7 @@ def test_classifier_step_reuses_its_model_across_restarts(bus, tmp_path):
     def runtime():
         return SwitchboardRuntime(bus, Settings(retrain_debounce_s=3600, decision_log=False,
                                                 model_cache_path=str(tmp_path)),
-                                  dialog_lines=lambda lang: DIALOG_LINES, start=False)
+                                  dialog_lines=lambda lang, exclude=(): DIALOG_LINES, start=False)
     first = runtime()
     ClassifierStep(bus, {}, runtime=first)
     register_all(bus)

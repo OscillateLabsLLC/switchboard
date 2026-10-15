@@ -10,7 +10,8 @@ DECLINE_POLICIES = ("never", "active", "always")  # when decline-class rows pass
 
 
 def options_from(cls, config):
-    """An options dataclass from the config keys it declares. Unknown keys are ignored; numbers are coerced."""
+    """An options dataclass from the config keys it declares. Unknown keys are ignored; numbers and lists take the
+    field's type."""
     config = config or {}
     return cls(**{f.name: _coerce(f.default, config[f.name]) for f in fields(cls) if f.name in config})
 
@@ -18,7 +19,7 @@ def options_from(cls, config):
 def _coerce(default, value):
     if default is MISSING or default is None or isinstance(default, bool):
         return value
-    return type(default)(value) if isinstance(default, (int, float)) else value
+    return type(default)(value) if isinstance(default, (int, float, tuple)) else value
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,8 @@ class ClassifierOptions:
     route_decline_class: str = "active"
     active_s: float = 120.0         # the "assistant active" window for route_decline_class="active"
     dialog_negatives: bool = True   # train the decline class on installed skills' .dialog lines
+    # skills whose dialog files are data, not phrasing: days-in-history reads out 136,639 historical events
+    dialog_negatives_exclude: tuple = ("ovos-skill-days-in-history.openvoiceos",)
 
     def __post_init__(self):
         if self.route_decline_class not in DECLINE_POLICIES:
