@@ -78,7 +78,7 @@ tomorrow" with its current-weather handler: the right skill, which the scoring c
   isn't known yet.
 - **Many skills, little memory.** Training runs once, in a separate process, and peaks at about 0.9 GB with 146
   intents and 3.4 GB with 465. Afterwards the model takes 160-240 MB.
-- **Not covered:** typed slots and finding the right device stay in the skills. There's no "did you mean X or Y?".
+- **Not covered:** typed slots and finding the right device stay in the skills. It never offers a choice ("did you mean X or Y?"); the only question it can ask is Doublecheck's yes/no on a risky request.
 
 ## More skills
 

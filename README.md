@@ -69,7 +69,7 @@ and which stock matchers to switch off.
 ## Limitations
 
 - Phrases like `play {anything}` or `open {anything}` can claim speech meant for another skill.
-- It never asks "did you mean X or Y?".
+- When two skills could fit, it picks one; it never asks "did you mean X or Y?" (Doublecheck only confirms risky requests).
 - Questions between people ("do you think it'll rain?") can be answered if the assistant spoke in the last two
   minutes.
 - Only English has been measured on real speech. The LLM prompts are English.
