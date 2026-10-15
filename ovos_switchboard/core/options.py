@@ -36,6 +36,7 @@ class EchoOptions:
 
 
 COLLISION_PRIORITIES = ("none", "core", "user")
+COLLISION_RESOLUTIONS = ("classifier", "specific")
 
 
 @dataclass(frozen=True)
@@ -51,11 +52,19 @@ class ExactOptions:
     collision_priority: str = "none"
     core_skills: tuple = (".openvoiceos", ".neongeckocom", "ocp")
     skill_priority: tuple = ()
+    # Still colliding after those: "classifier" hands the phrase to the classifier (the default); "specific" lets the
+    # intent with the most specific matching template win, the one covering the most words of the utterance with
+    # literal text rather than slots (as Padatious effectively prefers), if exactly one does. A rule, not a guess, so
+    # Switchboard without an LLM stays fully deterministic.
+    collision_resolution: str = "classifier"
 
     def __post_init__(self):
         if self.collision_priority not in COLLISION_PRIORITIES:
             raise ValueError(f"collision_priority must be one of {COLLISION_PRIORITIES}, "
                              f"got {self.collision_priority!r}")
+        if self.collision_resolution not in COLLISION_RESOLUTIONS:
+            raise ValueError(f"collision_resolution must be one of {COLLISION_RESOLUTIONS}, "
+                             f"got {self.collision_resolution!r}")
 
     def is_core(self, skill_id):
         """Whether a skill counts as core for collision_priority."""
