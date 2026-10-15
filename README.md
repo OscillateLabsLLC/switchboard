@@ -35,6 +35,47 @@ quietly records it and says nothing. High-risk requests (unlock, open the garage
 directly: they're held, or with [Doublecheck](https://github.com/OscillateLabsLLC/doublecheck) installed, the
 assistant asks first.
 
+## The rules it follows
+
+Every decision follows one of these rules. The decision log (`$XDG_STATE_HOME/switchboard/decisions.jsonl`)
+records the `step` and `reason` for each one. When Switchboard gets something wrong, look up the utterance in the
+log, then find the rule below.
+
+**Before matching**
+- A wake phrase at the start ("hey mycroft, …") is removed.
+- **Echo:** if the utterance repeats 4 or more words in a row that the assistant said in the last 60 seconds, it is
+  declined. This is the assistant hearing itself.
+
+**Exact step:** the whole utterance has to match a phrase a skill declares. Partial matches don't count.
+- If the phrases that match all belong to one intent, it goes there, every time.
+- A phrase with no fixed words (`{query}`) never claims anything here.
+- A phrase with one fixed word and a slot (`play {query}`) steps aside if the classifier is at least 80% sure it's
+  a different intent.
+- If phrases of two or more intents match (a collision), these are checked in order: `skill_priority`, then
+  `collision_priority`, then the phrase that matched more of the words literally (turn this off with
+  `collision_resolution: "classifier"`). Anything still undecided goes to the classifier. The exact step
+  never guesses.
+
+**Classifier step:** a model trained on the installed skills' phrases and their spoken lines.
+- At 50% confidence or more, the request goes to the skill it picked. Below that, the request passes to the next step.
+- If it decides the speech is "not for me", the speech goes to the LLM only if the assistant spoke in the last 2
+  minutes. Otherwise it is declined. Without an LLM, set `route_decline_class` to `never` so this speech is
+  always declined.
+
+**LLM step** (optional)
+- The LLM is offered the 12 likeliest skills and picks one, or none.
+- A second check must be at least 90% sure that the speech was said to the assistant. If it isn't, the speech is
+  declined.
+- If the LLM can't be reached or doesn't answer in time, the speech is declined. The assistant doesn't guess.
+- Questions meant for the assistant go on to common_qa.
+
+**Always**
+- High-risk requests (unlock, open the garage, shut down, clear data) are held. With Doublecheck, the assistant asks
+  first.
+- Requests for OCP go to OCP's own step, which adds data its handlers need.
+
+Every number above is a setting; [docs/configuration.md](docs/configuration.md) lists them.
+
 ## Install
 
 ```sh
