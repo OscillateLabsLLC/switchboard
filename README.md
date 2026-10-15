@@ -1,5 +1,7 @@
 # Switchboard
 
+[![Status: Active](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/OscillateLabsLLC/.github/blob/main/SUPPORT_STATUS.md)
+
 Switchboard decides which OVOS skill should handle what someone says, and stays silent when the speech wasn't
 meant for the assistant. It replaces OVOS's intent matchers (Padatious, Adapt, Model2Vec) with a few steps that
 each had to prove themselves on real household traffic before they were kept.

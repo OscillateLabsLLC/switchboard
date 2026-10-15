@@ -13,8 +13,6 @@ authors = [
 ]
 keywords = ["ovos", "neon", "pipeline", "intent", "voice", "llm", "switchboard"]
 classifiers = [
-    # Guards against an accidental `uv publish` reaching PyPI while the repo is private.
-    "Private :: Do Not Upload",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
