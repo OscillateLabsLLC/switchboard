@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.2](https://github.com/OscillateLabsLLC/switchboard/compare/v1.1.1...v1.1.2) (2026-11-04)
+
+
+### Bug Fixes
+
+* **deps:** bump certifi to 2026.10.23 ([752c728](https://github.com/OscillateLabsLLC/switchboard/commit/752c728b3e30d26cb04783520a48bf212f6f110b))
+* **deps:** bump certifi to 2026.10.23 ([1f85895](https://github.com/OscillateLabsLLC/switchboard/commit/1f85895a4e3e8cf8a9ed6bb24c4b9c0882587952))
+
 ## [1.1.1](https://github.com/OscillateLabsLLC/switchboard/compare/v1.1.0...v1.1.1) (2026-10-15)
 
 
