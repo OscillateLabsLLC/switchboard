@@ -21,6 +21,7 @@ from ovos_switchboard.core.templates import (
     literal_words,
     named_template_regex,
     requires_slot,
+    well_formed,
 )
 
 
@@ -79,7 +80,7 @@ class LabelSelector:
     def __init__(self, device, schema):
         from sklearn.feature_extraction.text import TfidfVectorizer
         self.by_canon, self.adapt, self.templates, ex_text = {}, {}, {}, {}
-        self.slot_required = set()  # template labels none of whose samples can be said without a slot
+        self.slot_required = set()  # template labels whose every sample needs a slot
         for skill_id, defs in device.definitions.items():
             for d in defs if isinstance(defs, list) else []:
                 label = f"{skill_id}:{d['intent_name']}"
@@ -90,14 +91,20 @@ class LabelSelector:
                 if d["method"] == "adapt":
                     self.adapt[label] = AdaptRule(d["definition"])
                 else:
-                    samples = [line for line in d["definition"].get("samples") or [] if compiles(line)]
-                    self.templates[label] = [self._template(line) for line in samples]
-                    if samples and all(requires_slot(line) for line in samples):
-                        self.slot_required.add(label)
+                    samples = d["definition"].get("samples") or []
+                    self.templates[label] = [self._template(line) for line in samples if compiles(line)]
+                    if d["lang"].lower() == device.lang:
+                        self._note_slot_required(label, samples)
         for e in device.examples:
             ex_text.setdefault(e["label"], []).append(SLOT_TOKEN.sub(" ", e["example"]).lower())
         self.ex_text = {label: " ".join(v[:EXAMPLES_PER_LABEL]) for label, v in ex_text.items()}
         self.vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4)).fit(list(self.ex_text.values()) or ["x"])
+
+    def _note_slot_required(self, label, samples):
+        """Judged on the samples the skill accepts (well_formed, typed slots included), not the compiling subset."""
+        accepted = [line for line in samples if well_formed(line)]
+        if accepted and all(requires_slot(line) for line in accepted):
+            self.slot_required.add(label)
 
     @staticmethod
     def _template(line):

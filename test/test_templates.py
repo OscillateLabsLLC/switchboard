@@ -9,6 +9,9 @@ from ovos_switchboard.core.templates import requires_slot, template_regex
     ("tell me a joke [about {topic}]", False),   # optional group: "tell me a joke" has no slot
     ("what time is it (in {location}|)", False),  # empty alternative
     ("what time is it", False),
+    ("remind me in {number:n} minutes", True),           # typed slot
+    ("set [a] timer [for {duration:time}]", False),      # typed, but optional
+    ("turn on {Entity}", True),                           # the matcher lowercases slot names
 ])
 def test_requires_slot(line, required):
     assert requires_slot(line) is required

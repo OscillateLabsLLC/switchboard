@@ -161,7 +161,8 @@ class ClassifierStage:
 
     def _slot_unfilled(self, verdict):
         """A dispatch the skill could not act on: no template matched, and every sample needs a slot ("what is the
-        boiling point of mercury" -> Home Assistant's sensor intent, "which device?"). Later stages may answer it."""
+        boiling point of mercury" would reach Home Assistant's sensor intent, which asks "which device?"). Later
+        stages may answer it."""
         return (verdict.outcome is Outcome.DISPATCH and not verdict.match_data
                 and self.resolver.slot_required(verdict.label))
 
