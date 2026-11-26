@@ -6,7 +6,7 @@
 |---|---|---|
 | `ovos-switchboard-echo-pipeline-plugin` | the utterance repeats 4+ words in a row the assistant said in the last 60 s | decline |
 | `ovos-switchboard-exact-pipeline-plugin` | the whole utterance matches exactly one skill's phrase (after a leading "Hey Mycroft") | dispatch |
-| `ovos-switchboard-classifier-pipeline-plugin` | a character n-gram classifier with a "not for me" class | dispatch at confidence 0.5+; decline or pass for "not for me"; pass otherwise |
+| `ovos-switchboard-classifier-pipeline-plugin` | a character n-gram classifier with a "not for me" class | dispatch at confidence 0.5+; decline or pass for "not for me"; pass otherwise, or when every phrase of the picked intent needs a slot the utterance doesn't fill |
 | `ovos-switchboard-llm-pipeline-plugin` | an LLM picks one of 12 shortlisted skills, then a gate checks the speech was addressed to the assistant | dispatch; decline when it's not for the assistant or the LLM is unreachable; pass questions on to common_qa |
 | `ovos-switchboard-prefix-pipeline-plugin` (optional) | the utterance starts with a skill's phrase and keeps going ("make me laugh hey dad …") | dispatch |
 | `ovos-switchboard-decider-pipeline-plugin` (experimental) | a small local model picks a shortlisted skill, for hosts without an LLM | dispatch at probability 0.7+; otherwise decline or pass |

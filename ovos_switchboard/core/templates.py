@@ -10,6 +10,7 @@ MAX_PER_LINE = 200
 LITERAL_EXPANSION_LIMIT = 50  # expansions examined when counting a template's literal words
 SLOT = re.compile(r"\{+([a-z_]+)\}+")
 SLOT_TOKEN = re.compile(r"\{+[a-z_]+\}+")
+ANY_SLOT = re.compile(r"\{+[^{}]+\}+")  # also typed ({number:n}) and other names the matcher accepts
 # A template space: whitespace, or nothing where an omitted [optional] group leaves a word edge. Never zero
 # characters inside a word, so "play {query}" doesn't match "playing by".
 WORD_GAP = r"(?:\s+|\b)"
@@ -59,6 +60,12 @@ def expand(t):
 def clean(s):
     """Collapse whitespace."""
     return re.sub(r"\s+", " ", s).strip()
+
+
+def requires_slot(line):
+    """True when every expansion of `line` keeps a {slot}: "[about {topic}]" and "(in {location}|)" make it
+    optional."""
+    return all(ANY_SLOT.search(e) for e in expand(line))
 
 
 def expansions(line, limit=MAX_PER_LINE):

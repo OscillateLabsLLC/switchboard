@@ -42,6 +42,10 @@ class LabelResolver:
         label, data, how = self.labels.select(intent, utterance)
         return label, data, how, slots
 
+    def slot_required(self, label):
+        """True for a template label whose every sample needs a slot."""
+        return label in self.labels.slot_required
+
     def keyword_data(self, label, utterance):
         """Keyword tools carry no parameters; the vocab the skill reads (message.data["Location"]) comes from
         evaluating its rule on the utterance."""
@@ -149,7 +153,18 @@ class ClassifierStage:
             return passed(self.name, "unmapped intent", details=details)
         if conf < self.options.threshold:
             return passed(self.name, "low confidence", details=details)
-        return resolved(self.name, top, utterance, self.resolver, **details)
+        verdict = resolved(self.name, top, utterance, self.resolver, **details)
+        if self._slot_unfilled(verdict):
+            # No `intent` on this PASS: a classifier verdict with an intent counts as routed (Router.route).
+            return passed(self.name, "required slot unfilled", details={**verdict.details, "unfilled": verdict.label})
+        return verdict
+
+    def _slot_unfilled(self, verdict):
+        """A dispatch the skill could not act on: no template matched, and every sample needs a slot ("what is the
+        boiling point of mercury" would reach Home Assistant's sensor intent, which asks "which device?"). Later
+        stages may answer it."""
+        return (verdict.outcome is Outcome.DISPATCH and not verdict.match_data
+                and self.resolver.slot_required(verdict.label))
 
     def _pass_onward(self, context):
         gap, policy = context.get("gap_s"), self.options.route_decline_class

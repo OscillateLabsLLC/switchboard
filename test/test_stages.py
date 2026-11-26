@@ -1,6 +1,7 @@
 import pytest
+from ovos_bus_client.message import Message
 
-from conftest import DATA, DIALOG_LINES, HA, WEATHER, StubLLM, register_all
+from conftest import DATA, DATETIME, DIALOG_LINES, HA, WEATHER, StubLLM, register_all
 from ovos_switchboard import data
 from ovos_switchboard.adapters.bus_registry import IntentRegistry
 from ovos_switchboard.core.classifier import Classifier
@@ -12,7 +13,7 @@ from ovos_switchboard.core.router import Router
 from ovos_switchboard.core.schema import Schema
 from ovos_switchboard.core.shortlist import Shortlist
 from ovos_switchboard.core.slots import SlotExtractor
-from ovos_switchboard.core.stages import ClassifierStage, EchoStage, ExactStage, LabelResolver, LLMStage
+from ovos_switchboard.core.stages import ClassifierStage, EchoStage, ExactStage, LabelResolver, LLMStage, PrefixStage
 from ovos_switchboard.core.tools import build_tools
 from ovos_switchboard.core.verdict import Outcome, Verdict
 
@@ -153,3 +154,76 @@ class RankedClassifier:
 def test_unmapped_top_class_passes_with_its_own_reason(parts):
     stage = ClassifierStage(RankedClassifier([("__unmapped__:skill-x.someone:do_thing", 0.97)]), parts.resolver)
     assert stage.decide("do the thing", COLD).reason == "unmapped intent"
+
+
+def picked(parts, intent, utterance):
+    """The classifier stage's verdict when the model ranks `intent` first."""
+    return ClassifierStage(RankedClassifier([(intent, 0.97)]), parts.resolver).decide(utterance, COLD)
+
+
+def test_slot_required_label_with_nothing_filled_passes(parts):
+    """#37: every turn.on sample needs {entity}; a knowledge question gave the skill nothing to act on."""
+    v = picked(parts, "device.on", "what is the boiling point of mercury in kelvin")
+    assert (v.outcome, v.reason) == (Outcome.PASS, "required slot unfilled")
+    # no intent, so the router routes onward; the decision log keeps the label
+    assert (v.intent, v.label, v.details["unfilled"]) == (None, None, f"{HA}:turn.on")
+
+
+def test_gated_pass_keeps_the_classifier_details(parts):
+    """The router copies these into the decision record for a classifier PASS."""
+    v = picked(parts, "device.on", "what is the boiling point of mercury in kelvin")
+    assert (v.details["confidence"], v.details["label_how"]) == (0.97, "only label")
+
+
+def test_required_slot_gate_is_classifier_only(parts, monkeypatch):
+    """Exact and prefix matches dispatch as before even for a label the gate would hold."""
+    monkeypatch.setattr(parts.resolver, "slot_required", lambda label: True)
+    layer = ExactLayer(parts.device, parts.schema)
+    v = ExactStage(layer, parts.resolver).decide("what time is it")
+    assert (v.outcome, v.match_data) == (Outcome.DISPATCH, {})
+    layer.enable_prefix(3)
+    v = PrefixStage(layer, parts.resolver).decide("tell me the time oh and also")
+    assert (v.outcome, v.label) == (Outcome.DISPATCH, f"{DATETIME}:what_time_is_it")
+
+
+def slot_required_after(*registrations):
+    """LabelSelector.slot_required for (skill_id, intent_name, lang, samples) registrations, on an en-us device."""
+    from ovos_utils.fakebus import FakeBus
+    bus = FakeBus()
+    reg = IntentRegistry(bus)
+    for skill_id, name, lang, samples in registrations:
+        bus.emit(Message("ovos.intent.register.template",
+                         {"skill_id": skill_id, "intent_name": name, "lang": lang, "samples": samples}))
+    return LabelSelector(Device.from_definitions(reg.definitions(), "en-us"), Schema.load()).slot_required
+
+
+def test_a_typed_sample_that_can_omit_its_slot_keeps_the_label_ungated():
+    assert f"{HA}:turn.on" not in slot_required_after(
+        (HA, "turn.on", "en-us", ["turn on [the {entity:device}]", "turn on the {entity}"]))
+
+
+def test_typed_samples_count_as_needing_their_slot():
+    assert f"{HA}:turn.on" in slot_required_after((HA, "turn.on", "en-us", ["turn on the {entity:device}"]))
+
+
+def test_another_languages_samples_do_not_gate_the_device_language():
+    assert f"{DATETIME}:what_time_is_it" not in slot_required_after(
+        (DATETIME, "what_time_is_it", "en-us", ["what time is it", "what time is it in {location}"]),
+        (DATETIME, "what_time_is_it", "de-de", ["wie spät ist es in {ort}"]))
+
+
+def test_slot_required_label_with_the_slot_filled_dispatches(parts):
+    v = picked(parts, "device.on", "hey could you turn on the desk lamp")
+    assert (v.outcome, v.label, v.match_data) == (Outcome.DISPATCH, f"{HA}:turn.on", {"entity": "desk lamp"})
+
+
+def test_label_with_a_slot_free_sample_dispatches_without_data(parts):
+    """what_time_is_it has "what time is it": an empty slot is a valid reading of it."""
+    v = picked(parts, "time.current", "whats the time right now")
+    assert (v.outcome, v.match_data) == (Outcome.DISPATCH, {})
+
+
+def test_adapt_label_dispatches_without_data(parts):
+    """Keyword intents are not templates: the gate does not apply to them."""
+    v = picked(parts, "weather.current", "is it going to be cold tonight")
+    assert (v.outcome, v.label) == (Outcome.DISPATCH, f"{WEATHER}:HandleCurrentWeather")
