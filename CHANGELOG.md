@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.3](https://github.com/OscillateLabsLLC/switchboard/compare/v1.1.2...v1.1.3) (2026-11-26)
+
+
+### Bug Fixes
+
+* judge required slots on accepted samples in the device language ([7d3951c](https://github.com/OscillateLabsLLC/switchboard/commit/7d3951c0e296f4e3e7aa205eef8603b17eb8f1f8))
+* pass on classifier picks whose required slot is unfilled ([1fbdfec](https://github.com/OscillateLabsLLC/switchboard/commit/1fbdfec8162191e5f0528b221022ba2a3268b9cb))
+* pass on classifier picks whose required slot is unfilled ([3229c49](https://github.com/OscillateLabsLLC/switchboard/commit/3229c4959eb5401f8d5a0a5199ef4e83159b9b82)), closes [#37](https://github.com/OscillateLabsLLC/switchboard/issues/37)
+
 ## [1.1.2](https://github.com/OscillateLabsLLC/switchboard/compare/v1.1.1...v1.1.2) (2026-11-04)
 
 
