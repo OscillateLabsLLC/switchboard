@@ -61,6 +61,12 @@ def clean(s):
     return re.sub(r"\s+", " ", s).strip()
 
 
+def requires_slot(line):
+    """True when every expansion of `line` keeps a {slot}: "[about {topic}]" and "(in {location}|)" make it
+    optional."""
+    return all(SLOT_TOKEN.search(e) for e in expand(line))
+
+
 def expansions(line, limit=MAX_PER_LINE):
     """Cleaned, non-empty expansions of a template line, at most `limit`."""
     return [c for c in (clean(e) for e in itertools.islice(expand(line), limit)) if c]

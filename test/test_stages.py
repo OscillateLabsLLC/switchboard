@@ -153,3 +153,33 @@ class RankedClassifier:
 def test_unmapped_top_class_passes_with_its_own_reason(parts):
     stage = ClassifierStage(RankedClassifier([("__unmapped__:skill-x.someone:do_thing", 0.97)]), parts.resolver)
     assert stage.decide("do the thing", COLD).reason == "unmapped intent"
+
+
+def picked(parts, intent, utterance):
+    """The classifier stage's verdict when the model ranks `intent` first."""
+    return ClassifierStage(RankedClassifier([(intent, 0.97)]), parts.resolver).decide(utterance, COLD)
+
+
+def test_slot_required_label_with_nothing_filled_passes(parts):
+    """#37: every turn.on sample needs {entity}; a knowledge question gave the skill nothing to act on."""
+    v = picked(parts, "device.on", "what is the boiling point of mercury in kelvin")
+    assert (v.outcome, v.reason) == (Outcome.PASS, "required slot unfilled")
+    # no intent: the router counts a classifier verdict with an intent as routed; the decision log keeps the label
+    assert (v.intent, v.label, v.details["unfilled"]) == (None, None, f"{HA}:turn.on")
+
+
+def test_slot_required_label_with_the_slot_filled_dispatches(parts):
+    v = picked(parts, "device.on", "hey could you turn on the desk lamp")
+    assert (v.outcome, v.label, v.match_data) == (Outcome.DISPATCH, f"{HA}:turn.on", {"entity": "desk lamp"})
+
+
+def test_label_with_a_slot_free_sample_dispatches_without_data(parts):
+    """what_time_is_it has "what time is it": an empty slot is a valid reading of it."""
+    v = picked(parts, "time.current", "whats the time right now")
+    assert (v.outcome, v.match_data) == (Outcome.DISPATCH, {})
+
+
+def test_adapt_label_dispatches_without_data(parts):
+    """Keyword intents are not templates: the gate does not apply to them."""
+    v = picked(parts, "weather.current", "is it going to be cold tonight")
+    assert (v.outcome, v.label) == (Outcome.DISPATCH, f"{WEATHER}:HandleCurrentWeather")

@@ -20,6 +20,7 @@ from ovos_switchboard.core.templates import (
     compiles,
     literal_words,
     named_template_regex,
+    requires_slot,
 )
 
 
@@ -78,6 +79,7 @@ class LabelSelector:
     def __init__(self, device, schema):
         from sklearn.feature_extraction.text import TfidfVectorizer
         self.by_canon, self.adapt, self.templates, ex_text = {}, {}, {}, {}
+        self.slot_required = set()  # template labels none of whose samples can be said without a slot
         for skill_id, defs in device.definitions.items():
             for d in defs if isinstance(defs, list) else []:
                 label = f"{skill_id}:{d['intent_name']}"
@@ -88,8 +90,10 @@ class LabelSelector:
                 if d["method"] == "adapt":
                     self.adapt[label] = AdaptRule(d["definition"])
                 else:
-                    self.templates[label] = [self._template(line) for line in d["definition"].get("samples") or []
-                                             if compiles(line)]
+                    samples = [line for line in d["definition"].get("samples") or [] if compiles(line)]
+                    self.templates[label] = [self._template(line) for line in samples]
+                    if samples and all(requires_slot(line) for line in samples):
+                        self.slot_required.add(label)
         for e in device.examples:
             ex_text.setdefault(e["label"], []).append(SLOT_TOKEN.sub(" ", e["example"]).lower())
         self.ex_text = {label: " ".join(v[:EXAMPLES_PER_LABEL]) for label, v in ex_text.items()}
